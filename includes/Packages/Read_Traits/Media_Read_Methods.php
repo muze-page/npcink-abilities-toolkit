@@ -895,9 +895,20 @@ trait Media_Read_Methods {
 
 		$mime_type = sanitize_text_field( (string) ( $input['mime_type'] ?? '' ) );
 		$search = sanitize_text_field( (string) ( $input['search'] ?? '' ) );
+		$attachment_ids = array_slice(
+			array_values(
+				array_unique(
+					array_filter(
+						array_map( array( $this, 'absint_value' ), is_array( $input['attachment_ids'] ?? null ) ? $input['attachment_ids'] : array() )
+					)
+				)
+			),
+			0,
+			20
+		);
 		$per_page = max( 1, min( 100, $this->absint_value( $input['per_page'] ?? 50 ) ) );
 		$page = max( 1, $this->absint_value( $input['page'] ?? 1 ) );
-		$query_result = $this->query_media_inventory( $mime_type, $search, $per_page, $page );
+		$query_result = $this->query_media_inventory( $mime_type, $search, $per_page, $page, $attachment_ids );
 		$attachment_ids = is_array( $query_result['attachment_ids'] ?? null ) ? $query_result['attachment_ids'] : array();
 		$items = array();
 		$issue_counts = array();
@@ -5473,9 +5484,10 @@ trait Media_Read_Methods {
 	 * @param string $search Search term.
 	 * @param int    $per_page Per page.
 	 * @param int    $page Page.
+	 * @param int[]  $attachment_ids Optional bounded attachment identities.
 	 * @return array<string,mixed>
 	 */
-	private function query_media_inventory( $mime_type, $search, $per_page, $page ) {
+	private function query_media_inventory( $mime_type, $search, $per_page, $page, $attachment_ids = array() ) {
 		$args = array(
 			'post_type'      => 'attachment',
 			'post_status'    => 'inherit',
@@ -5490,6 +5502,12 @@ trait Media_Read_Methods {
 		}
 		if ( '' !== $search ) {
 			$args['s'] = $search;
+		}
+		if ( ! empty( $attachment_ids ) ) {
+			$args['post__in']       = array_values( array_map( array( $this, 'absint_value' ), $attachment_ids ) );
+			$args['orderby']        = 'post__in';
+			$args['posts_per_page'] = min( 20, count( $args['post__in'] ) );
+			$args['paged']          = 1;
 		}
 
 		if ( class_exists( '\WP_Query' ) ) {
@@ -5509,6 +5527,10 @@ trait Media_Read_Methods {
 				continue;
 			}
 			$current_mime = sanitize_text_field( (string) ( $attachment->post_mime_type ?? '' ) );
+			$current_id = $this->absint_value( $attachment->ID ?? 0 );
+			if ( ! empty( $attachment_ids ) && ! in_array( $current_id, $attachment_ids, true ) ) {
+				continue;
+			}
 			if ( '' !== $mime_type && false === strpos( $current_mime, $mime_type ) ) {
 				continue;
 			}
@@ -5516,7 +5538,7 @@ trait Media_Read_Methods {
 			if ( '' !== $search && false === stripos( $title, $search ) ) {
 				continue;
 			}
-			$filtered[] = $this->absint_value( $attachment->ID ?? 0 );
+			$filtered[] = $current_id;
 		}
 
 		return array(
@@ -5577,16 +5599,36 @@ trait Media_Read_Methods {
 			$issues[] = 'format_attention';
 		}
 
+		$modified_gmt = is_object( $attachment ) ? sanitize_text_field( (string) ( $attachment->post_modified_gmt ?? '' ) ) : '';
+		$url = function_exists( 'wp_get_attachment_url' ) ? $this->esc_url_value( (string) wp_get_attachment_url( $attachment_id ) ) : '';
+		$media_fingerprint = hash(
+			'sha256',
+			(string) wp_json_encode(
+				array(
+					'attachment_id' => $attachment_id,
+					'modified_gmt'  => $modified_gmt,
+					'mime_type'     => $mime_type,
+					'url'           => $url,
+					'title'         => $title,
+					'alt'           => $alt,
+					'caption'       => $caption,
+					'description'   => $description,
+				)
+			)
+		);
+
 		return array(
-			'attachment_id' => $attachment_id,
-			'title'         => $title,
-			'mime_type'     => $mime_type,
-			'url'           => function_exists( 'wp_get_attachment_url' ) ? $this->esc_url_value( (string) wp_get_attachment_url( $attachment_id ) ) : '',
-			'alt'           => $alt,
-			'caption'       => $caption,
-			'description'   => $description,
-			'source_type'   => $source_type,
-			'source_page_url' => $source_url,
+			'attachment_id'    => $attachment_id,
+			'title'            => $title,
+			'mime_type'        => $mime_type,
+			'url'              => $url,
+			'modified_gmt'     => $modified_gmt,
+			'media_fingerprint' => $media_fingerprint,
+			'alt'              => $alt,
+			'caption'          => $caption,
+			'description'      => $description,
+			'source_type'      => $source_type,
+			'source_page_url'  => $source_url,
 			'photographer_name' => $photographer_name,
 			'attribution_text' => $attribution,
 			'copyright_notice' => $copyright_notice,

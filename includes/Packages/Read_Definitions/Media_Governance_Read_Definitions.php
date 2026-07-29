@@ -683,10 +683,16 @@ final class Media_Governance_Read_Definitions {
 				'input_schema'     => array(
 					'type'                 => 'object',
 					'properties'           => array(
-						'mime_type' => array( 'type' => 'string' ),
-						'search'    => array( 'type' => 'string' ),
-						'per_page'  => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 50 ),
-						'page'      => array( 'type' => 'integer', 'minimum' => 1, 'default' => 1 ),
+						'mime_type'      => array( 'type' => 'string' ),
+						'search'         => array( 'type' => 'string' ),
+						'attachment_ids' => array(
+							'type'     => 'array',
+							'items'    => array( 'type' => 'integer', 'minimum' => 1 ),
+							'maxItems' => 20,
+							'default'  => array(),
+						),
+						'per_page'       => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 50 ),
+						'page'           => array( 'type' => 'integer', 'minimum' => 1, 'default' => 1 ),
 					),
 					'additionalProperties' => false,
 				),
