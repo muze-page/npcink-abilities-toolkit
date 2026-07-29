@@ -2028,6 +2028,7 @@ npcink_abilities_toolkit_assert_same( 5, $package_abilities['npcink-abilities-to
 npcink_abilities_toolkit_assert_same( array( 'new_article', 'refresh', 'publish' ), $package_abilities['npcink-abilities-toolkit/build-article-workflow-context']['input_schema']['properties']['workflow']['enum'] ?? array(), 'article workflow context supports known workflow modes' );
 npcink_abilities_toolkit_assert_same( 365, $package_abilities['npcink-abilities-toolkit/get-publishing-calendar-context']['input_schema']['properties']['window_days']['maximum'] ?? null, 'publishing calendar window is bounded to 365 days' );
 npcink_abilities_toolkit_assert_same( 100, $package_abilities['npcink-abilities-toolkit/get-media-inventory-health']['input_schema']['properties']['per_page']['maximum'] ?? null, 'media inventory health scan is bounded to 100 assets per page' );
+npcink_abilities_toolkit_assert_same( 20, $package_abilities['npcink-abilities-toolkit/get-media-inventory-health']['input_schema']['properties']['attachment_ids']['maxItems'] ?? null, 'media inventory attachment-id revalidation is bounded to 20 assets' );
 npcink_abilities_toolkit_assert_same( array( 'post_id' ), $package_abilities['npcink-abilities-toolkit/get-post-seo-geo-readiness']['input_schema']['required'] ?? array(), 'post SEO/GEO readiness requires post_id' );
 npcink_abilities_toolkit_assert_same( 100, $package_abilities['npcink-abilities-toolkit/get-site-topic-coverage-report']['input_schema']['properties']['per_page']['maximum'] ?? null, 'site topic coverage scan is bounded to 100 posts per page' );
 npcink_abilities_toolkit_assert_same( 100, $package_abilities['npcink-abilities-toolkit/get-taxonomy-inventory-health']['input_schema']['properties']['per_page']['maximum'] ?? null, 'taxonomy inventory health scan is bounded to 100 terms per page' );
@@ -6699,6 +6700,16 @@ npcink_abilities_toolkit_assert_true( isset( $media_health['data']['issue_counts
 $media_health_row = npcink_abilities_toolkit_find_row_by_key( (array) ( $media_health['data']['items'] ?? array() ), 'attachment_id', 79 );
 npcink_abilities_toolkit_assert_same( true, $media_health_row['format_inspection']['format_plan']['needs_attention'] ?? null, 'get-media-inventory-health includes format inspection attention state' );
 npcink_abilities_toolkit_assert_true( in_array( 'legacy_image_format', (array) ( $media_health_row['format_inspection']['warnings'] ?? array() ), true ), 'get-media-inventory-health includes legacy format warning' );
+$media_projection_rows = $core_read_package->get_media_inventory_health(
+	array(
+		'mime_type'      => 'image',
+		'attachment_ids' => array( 79 ),
+		'per_page'       => 20,
+	)
+);
+npcink_abilities_toolkit_assert_same( 1, count( (array) ( $media_projection_rows['data']['items'] ?? array() ) ), 'get-media-inventory-health can revalidate a bounded attachment-id selection' );
+npcink_abilities_toolkit_assert_same( 79, $media_projection_rows['data']['items'][0]['attachment_id'] ?? 0, 'media inventory attachment-id selection preserves the requested local identity' );
+npcink_abilities_toolkit_assert_true( 64 === strlen( (string) ( $media_projection_rows['data']['items'][0]['media_fingerprint'] ?? '' ) ), 'media inventory rows expose a deterministic revision fingerprint for rebuildable Cloud projections' );
 $media_cleanup = $core_read_package->get_media_cleanup_opportunities(
 	array(
 		'mime_type' => 'image',
