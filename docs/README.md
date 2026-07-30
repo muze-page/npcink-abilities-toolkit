@@ -74,6 +74,10 @@ hashes, workflow hash, and the host-governed write boundary.
 
 Use this path when changing this package.
 
+Start with [System Audit And Closeout Standard](system-audit-and-closeout-standard.md)
+when reviewing repository health, hardening gates, publishing a maintenance
+change, or deciding whether a development stage is complete.
+
 1. Read [Next Stage Operating Standard](next-stage-operating-standard.md) for
    the current freeze/observe rules before opening ability work.
 2. Check [Host Proof Status](host-proof-status.md) before treating a candidate

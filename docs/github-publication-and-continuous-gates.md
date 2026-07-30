@@ -1,7 +1,7 @@
 # GitHub Publication And Continuous Gates
 
 Status: active operations note.
-Date: 2026-06-07
+Last verified: 2026-07-30.
 
 This note records the public GitHub handoff and the current continuous
 performance and security gates for `npcink-abilities-toolkit`.
@@ -11,16 +11,18 @@ performance and security gates for `npcink-abilities-toolkit`.
 The canonical public source repository is:
 
 ```text
-https://github.com/muze-page/npcink-abilities-toolkit
+https://github.com/npcink/npcink-abilities-toolkit
 ```
 
-GitHub repository state verified on 2026-06-07:
+GitHub repository state verified on 2026-07-30:
 
-- owner/name: `muze-page/npcink-abilities-toolkit`;
+- owner/name: `npcink/npcink-abilities-toolkit`;
 - visibility: public;
 - default branch: `master`;
 - published branch: `master`;
-- published tags: `0.2.0`, `0.4.0`, `0.5.0`, `0.5.1`.
+- published release tags: `0.2.0`, `0.4.0`, `0.5.0`, `0.5.1`, `0.5.2`,
+  and `0.5.3`;
+- maintenance marker: `pre-refactor-2026-07-14`.
 
 ## Master Branch Protection
 
@@ -30,7 +32,10 @@ not direct pushes.
 Required checks:
 
 - `php (8.0)`;
-- `php (8.3)`.
+- `php (8.3)`;
+- `PR body contract`;
+- `wordpress-smoke (minimum)`;
+- `wordpress-smoke (current)`.
 
 The checks are strict, so pull requests should be current with `master` before
 merge. Administrator bypass should stay disabled in normal operations. If a
@@ -38,16 +43,16 @@ break-glass direct push is ever used, verify the resulting commit's GitHub
 Actions run, record the reason in the release or operations note, and restore
 the pull-request path immediately.
 
-The local checkout now uses GitHub as `origin`:
+The local checkout should use the canonical GitHub repository as `origin`:
 
 ```text
-origin  https://github.com/muze-page/npcink-abilities-toolkit.git
+origin  git@github.com:npcink/npcink-abilities-toolkit.git
 ```
 
-The previous Gitee remote, `git@gitee.com:gitgreat/npcink-abilities-toolkit.git`,
-was removed from the local checkout to avoid accidental pushes to the old host.
-If another local checkout still points to Gitee, rename or remove that remote
-before release work.
+GitHub redirects the earlier `muze-page/npcink-abilities-toolkit` URL, but local
+checkouts should be normalized to the canonical owner before publication. The
+previous Gitee remote, `git@gitee.com:gitgreat/npcink-abilities-toolkit.git`,
+should not be used for this repository.
 
 ## Continuous Gate Baseline
 
@@ -69,14 +74,22 @@ It now includes:
 - provider demo smoke;
 - ability catalog audit;
 - WordPress.org review guard;
+- release-source immutability regression;
+- WordPress smoke lifecycle restoration regression;
+- single-site and multisite uninstall cleanup regression;
 - bounded performance smoke;
 - lightweight regression tests;
 - PHP syntax linting.
 
-The CI matrix now matches the package runtime floor:
+The PHP CI matrix matches the package runtime floor:
 
 - PHP `8.0`;
 - PHP `8.3`.
+
+The WordPress runtime matrix covers:
+
+- WordPress `6.9.4` with PHP `8.0`;
+- WordPress `7.0` with PHP `8.5`.
 
 PHPStan also analyzes against PHP `8.0`, matching `composer.json`'s
 `php >=8.0` requirement.
@@ -93,8 +106,11 @@ composer test:all
 composer analyse:phpstan
 ```
 
-The publication baseline `master` GitHub Actions run for commit
-`2c6d288 Add dependency audit to default gate` completed successfully.
+The 2026-07-30 publication baseline is pull request
+[#104](https://github.com/npcink/npcink-abilities-toolkit/pull/104), merged as
+`625a107cadabe2712c95b01eeb415e562360b94a`. The source, runtime, package, and
+closeout evidence is summarized in
+[System Audit And Closeout Standard](system-audit-and-closeout-standard.md).
 
 ## Known Historical CI Signal
 
@@ -107,7 +123,7 @@ Use the current `master` baseline for the next patch release instead.
 
 ## Future Release Follow-Up
 
-Before the next public patch release after `0.5.1`:
+Before the next public patch release after `0.5.3`:
 
 1. Run the release gate from a clean, verified source checkout:
 
