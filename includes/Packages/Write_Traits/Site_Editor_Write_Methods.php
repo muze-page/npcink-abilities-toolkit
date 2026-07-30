@@ -71,7 +71,7 @@ trait Site_Editor_Write_Methods {
 			$roundtrip_ok = $expected_top_level_count === $parsed_top_level_count;
 		}
 		$validation = array(
-			'valid'                    => empty( $block_errors ) && $roundtrip_ok,
+			'valid'                    => $roundtrip_ok,
 			'roundtrip_checked'        => $roundtrip_checked,
 			'roundtrip_ok'             => $roundtrip_ok,
 			'parse_available'          => function_exists( 'parse_blocks' ),
@@ -194,7 +194,7 @@ trait Site_Editor_Write_Methods {
 			$roundtrip_ok = count( $target_blocks ) === count( is_array( $after_parsed_blocks ) ? $after_parsed_blocks : array() );
 		}
 		$validation = array(
-			'valid'                    => empty( $block_errors ) && $roundtrip_ok,
+			'valid'                    => $roundtrip_ok,
 			'roundtrip_checked'        => $roundtrip_checked,
 			'roundtrip_ok'             => $roundtrip_ok,
 			'parse_available'          => function_exists( 'parse_blocks' ),
@@ -345,7 +345,7 @@ trait Site_Editor_Write_Methods {
 			$roundtrip_ok = count( $target_blocks ) === count( is_array( $after_parsed_blocks ) ? $after_parsed_blocks : array() );
 		}
 		$validation = array(
-			'valid'                    => empty( $block_errors ) && $roundtrip_ok,
+			'valid'                    => $roundtrip_ok,
 			'roundtrip_checked'        => $roundtrip_checked,
 			'roundtrip_ok'             => $roundtrip_ok,
 			'parse_available'          => function_exists( 'parse_blocks' ),

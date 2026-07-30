@@ -7523,63 +7523,81 @@ final class Core_Write_Package {
 		$list_type       = '';
 		$paragraph_lines = array();
 
-		$flush_list = function () use ( &$html, &$list_items, &$list_type ) {
-			if ( empty( $list_items ) || '' === $list_type ) {
-				$list_items = array();
-				$list_type  = '';
-				return;
-			}
-			$html[]     = '<' . $list_type . '><li>' . implode( '</li><li>', $list_items ) . '</li></' . $list_type . '>';
-			$list_items = array();
-			$list_type  = '';
-		};
-		$flush_paragraph = function () use ( &$html, &$paragraph_lines ) {
-			if ( empty( $paragraph_lines ) ) {
-				return;
-			}
-			$html[]          = '<p>' . implode( "<br />\n", $paragraph_lines ) . '</p>';
-			$paragraph_lines = array();
-		};
-
 		foreach ( $lines as $raw_line ) {
 			$line = trim( (string) $raw_line );
 			if ( '' === $line ) {
-				$flush_list();
-				$flush_paragraph();
+				$this->flush_markdown_list( $html, $list_items, $list_type );
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				continue;
 			}
 			if ( preg_match( '/^(#{1,6})\\s+(.+)$/', $line, $matches ) ) {
-				$flush_list();
-				$flush_paragraph();
+				$this->flush_markdown_list( $html, $list_items, $list_type );
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				$level  = min( 6, max( 1, strlen( (string) $matches[1] ) ) );
 				$html[] = '<h' . $level . '>' . $this->render_inline_markdown_html( (string) $matches[2] ) . '</h' . $level . '>';
 				continue;
 			}
 			if ( preg_match( '/^[-*+]\\s+(.+)$/', $line, $matches ) ) {
-				$flush_paragraph();
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				if ( '' !== $list_type && 'ul' !== $list_type ) {
-					$flush_list();
+					$this->flush_markdown_list( $html, $list_items, $list_type );
 				}
 				$list_type    = 'ul';
 				$list_items[] = $this->render_inline_markdown_html( (string) $matches[1] );
 				continue;
 			}
 			if ( preg_match( '/^\\d+\\.\\s+(.+)$/', $line, $matches ) ) {
-				$flush_paragraph();
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				if ( '' !== $list_type && 'ol' !== $list_type ) {
-					$flush_list();
+					$this->flush_markdown_list( $html, $list_items, $list_type );
 				}
 				$list_type    = 'ol';
 				$list_items[] = $this->render_inline_markdown_html( (string) $matches[1] );
 				continue;
 			}
-			$flush_list();
+			$this->flush_markdown_list( $html, $list_items, $list_type );
 			$paragraph_lines[] = $this->render_inline_markdown_html( $line );
 		}
-		$flush_list();
-		$flush_paragraph();
+		$this->flush_markdown_list( $html, $list_items, $list_type );
+		$this->flush_markdown_paragraph( $html, $paragraph_lines );
 
 		return implode( "\n\n", $html );
+	}
+
+	/**
+	 * Flushes one accumulated markdown list into the output.
+	 *
+	 * @param array<int,string> $html Output fragments.
+	 * @param array<int,string> $list_items Escaped list items.
+	 * @param string            $list_type List element name.
+	 * @return void
+	 */
+	private function flush_markdown_list( array &$html, array &$list_items, &$list_type ) {
+		if ( empty( $list_items ) || '' === $list_type ) {
+			$list_items = array();
+			$list_type  = '';
+			return;
+		}
+
+		$html[]     = '<' . $list_type . '><li>' . implode( '</li><li>', $list_items ) . '</li></' . $list_type . '>';
+		$list_items = array();
+		$list_type  = '';
+	}
+
+	/**
+	 * Flushes accumulated markdown paragraph lines into the output.
+	 *
+	 * @param array<int,string> $html Output fragments.
+	 * @param array<int,string> $paragraph_lines Escaped paragraph lines.
+	 * @return void
+	 */
+	private function flush_markdown_paragraph( array &$html, array &$paragraph_lines ) {
+		if ( empty( $paragraph_lines ) ) {
+			return;
+		}
+
+		$html[]          = '<p>' . implode( "<br />\n", $paragraph_lines ) . '</p>';
+		$paragraph_lines = array();
 	}
 
 	/**

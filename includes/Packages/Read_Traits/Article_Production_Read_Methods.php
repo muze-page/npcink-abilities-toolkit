@@ -416,9 +416,7 @@ trait Article_Production_Read_Methods {
 					$this->absint_value( $media_seo_summary['attribution_persisted_count'] ?? 0 ) > 0 ? '归因已保留 ' . $this->absint_value( $media_seo_summary['attribution_persisted_count'] ?? 0 ) . ' 张' : '',
 				)
 			);
-			if ( ! empty( $media_seo_parts ) ) {
-				$summary_parts[] = implode( '，', $media_seo_parts );
-			}
+			$summary_parts[] = implode( '，', $media_seo_parts );
 		}
 		if ( ! empty( $degraded_reasons ) ) {
 			$summary_parts[] = '原因：' . implode( '、', array_map( 'sanitize_text_field', $degraded_reasons ) );

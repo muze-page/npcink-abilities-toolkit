@@ -79,8 +79,21 @@ final class Ability_Registrar {
 	 */
 	public function boot() {
 		add_action( 'wp_abilities_api_init', array( $this, 'register_with_wordpress' ), 10 );
-		add_action( 'npcink_abilities_toolkit_refresh_catalog_observability', array( $this, 'emit_manual_catalog_refresh' ), 10, 1 );
-		add_action( 'shutdown', array( $this, 'emit_catalog_snapshot_if_changed' ), 100 );
+		add_action(
+			'npcink_abilities_toolkit_refresh_catalog_observability',
+			function ( $reason = 'manual_refresh' ) {
+				$this->emit_manual_catalog_refresh( $reason );
+			},
+			10,
+			1
+		);
+		add_action(
+			'shutdown',
+			function () {
+				$this->emit_catalog_snapshot_if_changed();
+			},
+			100
+		);
 	}
 
 	/**
