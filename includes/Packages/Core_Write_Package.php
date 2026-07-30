@@ -6399,7 +6399,7 @@ final class Core_Write_Package {
 			return new \WP_Error( 'npcink_abilities_toolkit_cloud_derivative_write_failed', __( 'The local derivative file could not be written.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}
 
-		$handle = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- exclusive-create conflicts are expected and must fail closed.
+		$handle = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- WP_Filesystem cannot guarantee atomic exclusive creation; conflicts are expected and fail closed.
 		if ( false === $handle ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_cloud_derivative_target_conflict', __( 'The local derivative target was created by another request.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 		}
@@ -6408,14 +6408,14 @@ final class Core_Write_Package {
 		$written = 0;
 		$length = strlen( $contents );
 		while ( $written < $length ) {
-			$chunk = fwrite( $handle, substr( $contents, $written ) );
+			$chunk = fwrite( $handle, substr( $contents, $written ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- preserve exclusive open-handle ownership for the complete write.
 			if ( false === $chunk || 0 === $chunk ) {
 				break;
 			}
 			$written += $chunk;
 		}
 		$flushed = fflush( $handle );
-		fclose( $handle );
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the exclusive creation handle above.
 		if ( $written !== $length || ! $flushed ) {
 			$cause = new \WP_Error( 'npcink_abilities_toolkit_cloud_derivative_write_failed', __( 'The local derivative file could not be written.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 			return $this->cloud_media_created_file_failure_with_discard( $cause, $created_file );
@@ -6442,21 +6442,21 @@ final class Core_Write_Package {
 		if ( true === $blocked ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment file could not be backed up.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}
-		$source = @fopen( $source_path, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- errors are converted to bounded WP_Error values.
+		$source = @fopen( $source_path, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- paired handles are required for exclusive destination creation; errors become bounded WP_Error values.
 		if ( false === $source ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment file could not be opened for backup.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}
-		$target = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- exclusive-create conflicts are expected and must fail closed.
+		$target = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- WP_Filesystem cannot guarantee atomic exclusive creation; conflicts fail closed.
 		if ( false === $target ) {
-			fclose( $source );
+			fclose( $source ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the paired source handle after an exclusive-create conflict.
 			return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment backup target is unavailable.', 'npcink-abilities-toolkit' ), array( 'status' => file_exists( $target_path ) ? 409 : 500 ) );
 		}
 		$stat = fstat( $target );
 		$created_file = $this->cloud_media_created_file_record( $target_path, is_array( $stat ) ? $stat : array() );
 		$copied = stream_copy_to_stream( $source, $target );
 		$flushed = fflush( $target );
-		fclose( $source );
-		fclose( $target );
+		fclose( $source ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the paired source handle after streaming.
+		fclose( $target ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the exclusive destination handle after streaming.
 		$source_size = filesize( $source_path );
 		$target_size = is_readable( $target_path ) ? filesize( $target_path ) : false;
 		if ( false === $copied || ! $flushed || $source_size !== $target_size ) {
@@ -6603,7 +6603,7 @@ final class Core_Write_Package {
 				"SELECT ID FROM {$wpdb->posts} WHERE ID = %d FOR UPDATE", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- the table comes from wpdb.
 				$post_id
 			);
-			$parent_row = $wpdb->get_row( $parent_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- this is the attachment serialization lock.
+			$parent_row = $wpdb->get_row( $parent_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- $parent_sql is prepared immediately above and provides the attachment serialization lock.
 			if ( ! is_object( $parent_row ) || $post_id !== absint( $parent_row->ID ?? 0 ) ) {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'attachment_lock_failed' );
 			}
@@ -6612,7 +6612,7 @@ final class Core_Write_Package {
 				$post_id,
 				$meta_key
 			);
-			$before_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- raw locked values are required for byte-exact comparison.
+			$before_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- $meta_sql is prepared immediately above; raw locked values are required for byte-exact comparison.
 			if ( ! is_array( $before_rows ) || ! $this->cloud_media_locked_post_meta_rows_match( $before_rows, $meta_key, $before ) ) {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'locked_value_drift' );
 			}
@@ -6629,7 +6629,7 @@ final class Core_Write_Package {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'wordpress_meta_update_failed' );
 			}
 
-			$after_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- verify the exact committed candidate while locks remain held.
+			$after_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- reuse the prepared locked-row query to verify the exact committed candidate.
 			if ( ! is_array( $after_rows ) || ! $this->cloud_media_locked_post_meta_rows_match( $after_rows, $meta_key, $after ) ) {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'wordpress_meta_write_drift' );
 			}
@@ -6829,7 +6829,7 @@ final class Core_Write_Package {
 				"SELECT `{$field}` FROM {$wpdb->posts} WHERE ID = %d FOR UPDATE", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- field is allowlisted and the table comes from wpdb.
 				$post_id
 			);
-			$locked_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- this is the transaction's row lock.
+			$locked_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- $select_sql is prepared immediately above and provides the transaction row lock.
 			if ( ! is_object( $locked_row ) || ! property_exists( $locked_row, $field ) || (string) $locked_row->{$field} !== (string) $before ) {
 				return $this->cloud_media_rollback_locked_post_mutation( $field, $post_id, 'locked_value_drift' );
 			}
@@ -6842,7 +6842,7 @@ final class Core_Write_Package {
 				return $this->cloud_media_rollback_locked_post_mutation( $field, $post_id, 'wordpress_update_failed' );
 			}
 
-			$written_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- exact verification occurs while the row remains locked.
+			$written_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- reuse the prepared row-lock query for exact verification.
 			if ( ! is_object( $written_row ) || ! property_exists( $written_row, $field ) || (string) $written_row->{$field} !== (string) $after ) {
 				return $this->cloud_media_rollback_locked_post_mutation( $field, $post_id, 'wordpress_write_drift' );
 			}
