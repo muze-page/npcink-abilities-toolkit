@@ -6,6 +6,8 @@ WordPress.org release safety.
 
 The full solo AI development operating workflow is summarized in
 `docs/solo-ai-development-workflow.md`.
+Repository-wide audits, gate hardening, evidence classification, and
+post-merge closeout follow `docs/system-audit-and-closeout-standard.md`.
 
 Cross-project platform coordination starts from
 `/Users/muze/gitee/npcink-workflow-toolbox/docs/platform/README.md`. This

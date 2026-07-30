@@ -1,11 +1,15 @@
 # Solo AI Development Workflow
 
 Status: active operating standard.
-Last updated: 2026-06-11.
+Last updated: 2026-07-30.
 
 This document summarizes the current solo-maintainer plus AI-agent workflow for
 `npcink-abilities-toolkit`. It turns the recurring chat decisions into a
 single reusable operating guide.
+
+For the repository-wide audit sequence, evidence ladder, five-axis review, and
+closeout record template, also read
+[System Audit And Closeout Standard](system-audit-and-closeout-standard.md).
 
 ## Operating Model
 
@@ -157,7 +161,10 @@ gh pr create --base master --head codex/short-description
 Required GitHub Actions checks:
 
 - `php (8.0)`;
-- `php (8.3)`.
+- `php (8.3)`;
+- `PR body contract`;
+- `wordpress-smoke (minimum)`;
+- `wordpress-smoke (current)`.
 
 Draft PRs are appropriate while an AI-generated change is still being checked.
 Ready PRs can be merged after:

@@ -7,6 +7,9 @@ performance behavior.
 
 For the complete solo-maintainer plus AI-agent operating workflow, see
 [docs/solo-ai-development-workflow.md](docs/solo-ai-development-workflow.md).
+For repository-wide audits, evidence classification, release hardening, and
+post-merge closeout, use
+[docs/system-audit-and-closeout-standard.md](docs/system-audit-and-closeout-standard.md).
 
 ## Branches And Pull Requests
 
@@ -63,6 +66,9 @@ The required GitHub checks are:
 
 - `php (8.0)`
 - `php (8.3)`
+- `PR body contract`
+- `wordpress-smoke (minimum)`
+- `wordpress-smoke (current)`
 
 ## Post-Merge Cleanup
 
