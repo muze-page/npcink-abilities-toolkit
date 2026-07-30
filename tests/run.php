@@ -22,6 +22,7 @@ use Npcink_Abilities_Toolkit\Registry\Category_Registrar;
 use Npcink_Abilities_Toolkit\Registry\Contract_Normalizer;
 use Npcink_Abilities_Toolkit\Registry\Schema_Normalizer;
 use Npcink_Abilities_Toolkit\Rest\Contract_Controller;
+use Npcink_Abilities_Toolkit\Security\Permission_Callbacks;
 use Npcink_Abilities_Toolkit\Support\Gutenberg_Block_Document;
 
 $assertions = 0;
@@ -47,6 +48,10 @@ function npcink_abilities_toolkit_assert_true( $condition, $message ) {
 function npcink_abilities_toolkit_assert_same( $expected, $actual, $message ) {
 	npcink_abilities_toolkit_assert_true( $expected === $actual, $message . ' Expected ' . var_export( $expected, true ) . ', got ' . var_export( $actual, true ) );
 }
+
+npcink_abilities_toolkit_assert_same( false, current_user_can( 'manage_option' ), 'unit capability defaults fail closed for unknown or misspelled capabilities' );
+$unknown_capability_callback = Permission_Callbacks::for_capability( 'manage_option' );
+npcink_abilities_toolkit_assert_same( false, $unknown_capability_callback(), 'permission callbacks preserve fail-closed behavior for unknown capabilities' );
 
 npcink_abilities_toolkit_assert_true(
 	false !== strpos( $composer_source, '"pr:publish": "bash scripts/publish-pr.sh"' )

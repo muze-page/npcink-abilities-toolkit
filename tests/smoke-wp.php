@@ -24,6 +24,7 @@ $npcink_abilities_toolkit_smoke_post_fixture_ids       = array();
 $npcink_abilities_toolkit_smoke_comment_fixture_ids    = array();
 $npcink_abilities_toolkit_smoke_attachment_fixture_ids = array();
 $npcink_abilities_toolkit_smoke_term_fixtures          = array();
+$npcink_abilities_toolkit_smoke_user_fixture_ids        = array();
 $npcink_abilities_toolkit_smoke_cleanup_completed      = false;
 
 /**
@@ -217,12 +218,27 @@ function npcink_abilities_toolkit_smoke_register_term_fixture( $term_id, $taxono
 }
 
 /**
+ * Registers a user fixture for cleanup even when the smoke test fails.
+ *
+ * @param int $user_id User id.
+ * @return void
+ */
+function npcink_abilities_toolkit_smoke_register_user_fixture( $user_id ) {
+	global $npcink_abilities_toolkit_smoke_user_fixture_ids;
+
+	$user_id = (int) $user_id;
+	if ( $user_id > 0 ) {
+		$npcink_abilities_toolkit_smoke_user_fixture_ids[ $user_id ] = true;
+	}
+}
+
+/**
  * Deletes registered smoke fixtures.
  *
  * @return void
  */
 function npcink_abilities_toolkit_smoke_cleanup_fixtures() {
-	global $npcink_abilities_toolkit_smoke_post_fixture_ids, $npcink_abilities_toolkit_smoke_comment_fixture_ids, $npcink_abilities_toolkit_smoke_attachment_fixture_ids, $npcink_abilities_toolkit_smoke_term_fixtures, $npcink_abilities_toolkit_smoke_cleanup_completed;
+	global $npcink_abilities_toolkit_smoke_post_fixture_ids, $npcink_abilities_toolkit_smoke_comment_fixture_ids, $npcink_abilities_toolkit_smoke_attachment_fixture_ids, $npcink_abilities_toolkit_smoke_term_fixtures, $npcink_abilities_toolkit_smoke_user_fixture_ids, $npcink_abilities_toolkit_smoke_cleanup_completed;
 
 	if ( $npcink_abilities_toolkit_smoke_cleanup_completed ) {
 		return;
@@ -284,6 +300,16 @@ function npcink_abilities_toolkit_smoke_cleanup_fixtures() {
 		$deleted = wp_delete_term( $term_id, $taxonomy );
 		if ( is_wp_error( $deleted ) || false === $deleted ) {
 			fwrite( STDERR, '[warn] failed to delete smoke term fixture ' . $taxonomy . ':' . $term_id . "\n" );
+		}
+	}
+
+	if ( ! function_exists( 'wp_delete_user' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+	}
+	foreach ( array_keys( (array) $npcink_abilities_toolkit_smoke_user_fixture_ids ) as $user_id ) {
+		$user_id = (int) $user_id;
+		if ( $user_id > 0 && get_userdata( $user_id ) && ! wp_delete_user( $user_id ) ) {
+			fwrite( STDERR, '[warn] failed to delete smoke user fixture ' . $user_id . "\n" );
 		}
 	}
 }
@@ -510,6 +536,19 @@ $admin_ids = get_users(
 );
 $admin_id = isset( $admin_ids[0] ) ? (int) $admin_ids[0] : 0;
 npcink_abilities_toolkit_smoke_assert( $admin_id > 0, 'An administrator user is available for authenticated REST smoke checks.' );
+
+$subscriber_id = wp_insert_user(
+	array(
+		'user_login' => sanitize_user( 'npcink-smoke-' . npcink_abilities_toolkit_smoke_run_id(), true ),
+		'user_pass'  => wp_generate_password( 24, true, true ),
+		'role'       => 'subscriber',
+	)
+);
+npcink_abilities_toolkit_smoke_assert( ! is_wp_error( $subscriber_id ) && (int) $subscriber_id > 0, 'A subscriber fixture is available for authenticated permission-denial smoke checks.' );
+npcink_abilities_toolkit_smoke_register_user_fixture( (int) $subscriber_id );
+wp_set_current_user( (int) $subscriber_id );
+$subscriber_contract_response = rest_do_request( new WP_REST_Request( 'GET', '/npcink-abilities-toolkit/v1/contract' ) );
+npcink_abilities_toolkit_smoke_assert( 403 === (int) $subscriber_contract_response->get_status(), 'Authenticated subscriber cannot read the manage_options runtime contract.' );
 
 wp_set_current_user( $admin_id );
 
@@ -1848,6 +1887,7 @@ npcink_abilities_toolkit_smoke_assert(
 );
 
 npcink_abilities_toolkit_smoke_cleanup_fixtures();
+npcink_abilities_toolkit_smoke_assert( false === get_userdata( (int) $subscriber_id ), 'Smoke subscriber fixture is deleted after smoke.' );
 npcink_abilities_toolkit_smoke_assert( null === get_comment( (int) $smoke_comment_id ), 'Smoke comment fixture is deleted after smoke.' );
 npcink_abilities_toolkit_smoke_assert( false === get_post_type( (int) $smoke_page_id ), 'Smoke page fixture is deleted after smoke.' );
 npcink_abilities_toolkit_smoke_assert( false === get_post_type( (int) $smoke_attachment_id ), 'Smoke media fixture is deleted after smoke.' );
