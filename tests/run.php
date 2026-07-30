@@ -515,23 +515,24 @@ npcink_abilities_toolkit_assert_true( is_string( $block_theme_host_proof_runner 
 npcink_abilities_toolkit_assert_true( is_string( $block_theme_host_proof_runner ) && false !== strpos( $block_theme_host_proof_runner, 'Set WP_PATH' ), 'block-theme host proof requires an explicit real WordPress target' );
 foreach (
 	array(
-		'Next-Stage Execution Queue',
+		'Closed Proof State And Observation Queue',
+		'All three proof targets in the ledger are closed',
 		'Keep Toolkit in freeze/observe mode and do not add first-party abilities',
-		'Block theme / Gutenberg intent-routing proof',
-		'must discover existing abilities',
+		'Real-host proof passed on 2026-07-11',
+		'No new Toolkit ability gap was found',
 		'examples and long-form docs outside the release zip',
 		'does not block basic third-party provider',
 	) as $required
 ) {
-	npcink_abilities_toolkit_assert_true( is_string( $host_proof_status ) && false !== strpos( $host_proof_status, $required ), 'host proof status keeps next-stage execution queue: ' . $required );
+	npcink_abilities_toolkit_assert_true( is_string( $host_proof_status ) && false !== strpos( $host_proof_status, $required ), 'host proof status keeps the closed proof state: ' . $required );
 }
 
 $next_stage_standard = file_get_contents( __DIR__ . '/../docs/next-stage-operating-standard.md' );
 foreach (
 	array(
 		'Current stage update',
-		'Keep observing; no Toolkit ability gap is',
-		'Block theme / Gutenberg intent routing',
+		'intent-routing proofs are closed-loop proven',
+		'There is no active proof target',
 		'Do not ship the repository `docs/`, `examples/`, or scripts',
 	) as $required
 ) {

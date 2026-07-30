@@ -52,20 +52,19 @@ A valid host proof should:
 5. Reopen Toolkit work only when the failure is a small reusable contract gap
    in this package.
 
-## Next-Stage Execution Queue
+## Closed Proof State And Observation Queue
 
-Run the next stage in this order:
+All three proof targets in the ledger are closed. Continue in this order:
 
 1. Keep Toolkit in freeze/observe mode and do not add first-party abilities.
-2. Run the Block theme / Gutenberg intent-routing proof from a host or Adapter
-   path. The proof must discover existing abilities through the WordPress
-   Abilities API, preserve real ability ids in any proposal handoff, and stop at
-   proposal, dry-run, or host-governed write target selection.
-3. If the proof passes, record the host, commands, ability chain, and no-direct
-   WordPress mutation evidence in this ledger.
-4. If the proof fails, classify the gap before opening Toolkit work. Routing,
+2. Keep the explicit real-host proof commands green and rerun the affected proof
+   when a host, WordPress, or public ability contract changes.
+3. If a proof fails, classify the gap before opening Toolkit work. Routing,
    prompt selection, model/runtime behavior, signed handoff, approval storage,
    audit truth, and product review UX belong outside Toolkit by default.
+4. Reopen Toolkit work only for a small reusable contract gap owned by this
+   package, and record the host, commands, ability chain, and no-direct
+   WordPress mutation evidence in this ledger.
 5. Improve packaged third-party onboarding only through release-visible
    discovery surfaces such as `readme.txt` and the admin page. Keep repository
    examples and long-form docs outside the release zip.
@@ -199,9 +198,10 @@ Use this classification before creating Toolkit work:
 
 ## Release Posture
 
-No `0.5.2` release is open from this status note alone. A maintenance release is
-reasonable only if the next proof work stays limited to documentation, replay
-fixtures, contract snapshots, CI checks, or existing-ability hardening.
+The `0.5.3` release is complete. This status note does not open another release.
+A maintenance release is reasonable only if new proof work stays limited to
+documentation, replay fixtures, contract snapshots, CI checks, or
+existing-ability hardening.
 
 Do not treat the current state as `0.6.0` material unless a real host proof
 fails and identifies one to three small, reusable, WordPress-only gaps that
