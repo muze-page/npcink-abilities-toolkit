@@ -68,10 +68,11 @@ cohesive responsibility can move without changing its public contract.
    and template lookup helpers. `Core_Write_Package` remains the definition and
    composition owner, and the extraction preserves host-governed dry-run and
    final authorization behavior.
-3. **Media write lifecycle — deferred pending evidence.** If a resume condition
-   is met, evaluate remote intake, derivative materialization, file
-   replacement/rollback, and reference repair independently. These paths have
-   different security and rollback risks and must not move as one campaign.
+3. **Media write lifecycle — one reference-discovery slice completed; remaining
+   work deferred pending independent evidence.** Evaluate remote intake,
+   derivative materialization, file replacement/rollback, and reference repair
+   independently. These paths have different security and rollback risks and
+   must not move as one campaign.
 4. **Definition providers — deferred pending callback pressure.** Move large
    read/write definition arrays only when a concrete definition change is made
    harder by current ownership and callback ownership is already stable.
@@ -113,6 +114,21 @@ The second slice therefore unfreezes only
 move together without wrappers. Other media methods, media definitions,
 ability ids, schemas, callbacks, permissions, outputs, and runtime ownership do
 not move. This evidence does not authorize another media-method extraction.
+
+## 2026-07-30 Media Reference Discovery Slice
+
+Recent media integrity and derivative-adoption changes repeatedly crossed the
+same content-reference discovery helpers in `Core_Write_Package`. That satisfies
+the repeated-change and security-isolation triggers for one bounded write-side
+slice.
+
+`Media_Reference_Discovery_Write_Methods` now owns only the private helpers that
+derive old-to-new URL/file pairs, discover bounded candidate posts, and build
+search needles. `Core_Write_Package` remains the ability definition, callback,
+permission, mutation, rollback, and verification owner. No public ability id,
+schema, annotation, callback, dry-run default, or final authorization changes.
+The broader media lifecycle remains paused and requires independent evidence
+before another extraction.
 
 ## Gate Per Slice
 
