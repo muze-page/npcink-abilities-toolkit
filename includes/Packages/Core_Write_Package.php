@@ -20,6 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Registers low-risk WordPress write abilities migrated from the Npcink AI plugin.
  */
 final class Core_Write_Package {
+	use Media_Reference_Discovery_Write_Methods;
 	use Post_Attribute_Write_Methods;
 	use Site_Editor_Write_Methods;
 
@@ -6398,7 +6399,7 @@ final class Core_Write_Package {
 			return new \WP_Error( 'npcink_abilities_toolkit_cloud_derivative_write_failed', __( 'The local derivative file could not be written.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}
 
-		$handle = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- exclusive-create conflicts are expected and must fail closed.
+		$handle = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- WP_Filesystem cannot guarantee atomic exclusive creation; conflicts are expected and fail closed.
 		if ( false === $handle ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_cloud_derivative_target_conflict', __( 'The local derivative target was created by another request.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 		}
@@ -6407,14 +6408,14 @@ final class Core_Write_Package {
 		$written = 0;
 		$length = strlen( $contents );
 		while ( $written < $length ) {
-			$chunk = fwrite( $handle, substr( $contents, $written ) );
+			$chunk = fwrite( $handle, substr( $contents, $written ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- preserve exclusive open-handle ownership for the complete write.
 			if ( false === $chunk || 0 === $chunk ) {
 				break;
 			}
 			$written += $chunk;
 		}
 		$flushed = fflush( $handle );
-		fclose( $handle );
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the exclusive creation handle above.
 		if ( $written !== $length || ! $flushed ) {
 			$cause = new \WP_Error( 'npcink_abilities_toolkit_cloud_derivative_write_failed', __( 'The local derivative file could not be written.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 			return $this->cloud_media_created_file_failure_with_discard( $cause, $created_file );
@@ -6441,21 +6442,21 @@ final class Core_Write_Package {
 		if ( true === $blocked ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment file could not be backed up.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}
-		$source = @fopen( $source_path, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- errors are converted to bounded WP_Error values.
+		$source = @fopen( $source_path, 'rb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- paired handles are required for exclusive destination creation; errors become bounded WP_Error values.
 		if ( false === $source ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment file could not be opened for backup.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}
-		$target = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- exclusive-create conflicts are expected and must fail closed.
+		$target = @fopen( $target_path, 'x+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- WP_Filesystem cannot guarantee atomic exclusive creation; conflicts fail closed.
 		if ( false === $target ) {
-			fclose( $source );
+			fclose( $source ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the paired source handle after an exclusive-create conflict.
 			return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment backup target is unavailable.', 'npcink-abilities-toolkit' ), array( 'status' => file_exists( $target_path ) ? 409 : 500 ) );
 		}
 		$stat = fstat( $target );
 		$created_file = $this->cloud_media_created_file_record( $target_path, is_array( $stat ) ? $stat : array() );
 		$copied = stream_copy_to_stream( $source, $target );
 		$flushed = fflush( $target );
-		fclose( $source );
-		fclose( $target );
+		fclose( $source ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the paired source handle after streaming.
+		fclose( $target ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closes the exclusive destination handle after streaming.
 		$source_size = filesize( $source_path );
 		$target_size = is_readable( $target_path ) ? filesize( $target_path ) : false;
 		if ( false === $copied || ! $flushed || $source_size !== $target_size ) {
@@ -6602,7 +6603,7 @@ final class Core_Write_Package {
 				"SELECT ID FROM {$wpdb->posts} WHERE ID = %d FOR UPDATE", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- the table comes from wpdb.
 				$post_id
 			);
-			$parent_row = $wpdb->get_row( $parent_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- this is the attachment serialization lock.
+			$parent_row = $wpdb->get_row( $parent_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- $parent_sql is prepared immediately above and provides the attachment serialization lock.
 			if ( ! is_object( $parent_row ) || $post_id !== absint( $parent_row->ID ?? 0 ) ) {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'attachment_lock_failed' );
 			}
@@ -6611,7 +6612,7 @@ final class Core_Write_Package {
 				$post_id,
 				$meta_key
 			);
-			$before_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- raw locked values are required for byte-exact comparison.
+			$before_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- $meta_sql is prepared immediately above; raw locked values are required for byte-exact comparison.
 			if ( ! is_array( $before_rows ) || ! $this->cloud_media_locked_post_meta_rows_match( $before_rows, $meta_key, $before ) ) {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'locked_value_drift' );
 			}
@@ -6628,7 +6629,7 @@ final class Core_Write_Package {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'wordpress_meta_update_failed' );
 			}
 
-			$after_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- verify the exact committed candidate while locks remain held.
+			$after_rows = $wpdb->get_results( $meta_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- reuse the prepared locked-row query to verify the exact committed candidate.
 			if ( ! is_array( $after_rows ) || ! $this->cloud_media_locked_post_meta_rows_match( $after_rows, $meta_key, $after ) ) {
 				return $this->cloud_media_rollback_locked_post_meta_mutation( $post_id, $meta_key, 'wordpress_meta_write_drift' );
 			}
@@ -6828,7 +6829,7 @@ final class Core_Write_Package {
 				"SELECT `{$field}` FROM {$wpdb->posts} WHERE ID = %d FOR UPDATE", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- field is allowlisted and the table comes from wpdb.
 				$post_id
 			);
-			$locked_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- this is the transaction's row lock.
+			$locked_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- $select_sql is prepared immediately above and provides the transaction row lock.
 			if ( ! is_object( $locked_row ) || ! property_exists( $locked_row, $field ) || (string) $locked_row->{$field} !== (string) $before ) {
 				return $this->cloud_media_rollback_locked_post_mutation( $field, $post_id, 'locked_value_drift' );
 			}
@@ -6841,7 +6842,7 @@ final class Core_Write_Package {
 				return $this->cloud_media_rollback_locked_post_mutation( $field, $post_id, 'wordpress_update_failed' );
 			}
 
-			$written_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- exact verification occurs while the row remains locked.
+			$written_row = $wpdb->get_row( $select_sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- reuse the prepared row-lock query for exact verification.
 			if ( ! is_object( $written_row ) || ! property_exists( $written_row, $field ) || (string) $written_row->{$field} !== (string) $after ) {
 				return $this->cloud_media_rollback_locked_post_mutation( $field, $post_id, 'wordpress_write_drift' );
 			}
@@ -7523,63 +7524,81 @@ final class Core_Write_Package {
 		$list_type       = '';
 		$paragraph_lines = array();
 
-		$flush_list = function () use ( &$html, &$list_items, &$list_type ) {
-			if ( empty( $list_items ) || '' === $list_type ) {
-				$list_items = array();
-				$list_type  = '';
-				return;
-			}
-			$html[]     = '<' . $list_type . '><li>' . implode( '</li><li>', $list_items ) . '</li></' . $list_type . '>';
-			$list_items = array();
-			$list_type  = '';
-		};
-		$flush_paragraph = function () use ( &$html, &$paragraph_lines ) {
-			if ( empty( $paragraph_lines ) ) {
-				return;
-			}
-			$html[]          = '<p>' . implode( "<br />\n", $paragraph_lines ) . '</p>';
-			$paragraph_lines = array();
-		};
-
 		foreach ( $lines as $raw_line ) {
 			$line = trim( (string) $raw_line );
 			if ( '' === $line ) {
-				$flush_list();
-				$flush_paragraph();
+				$this->flush_markdown_list( $html, $list_items, $list_type );
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				continue;
 			}
 			if ( preg_match( '/^(#{1,6})\\s+(.+)$/', $line, $matches ) ) {
-				$flush_list();
-				$flush_paragraph();
+				$this->flush_markdown_list( $html, $list_items, $list_type );
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				$level  = min( 6, max( 1, strlen( (string) $matches[1] ) ) );
 				$html[] = '<h' . $level . '>' . $this->render_inline_markdown_html( (string) $matches[2] ) . '</h' . $level . '>';
 				continue;
 			}
 			if ( preg_match( '/^[-*+]\\s+(.+)$/', $line, $matches ) ) {
-				$flush_paragraph();
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				if ( '' !== $list_type && 'ul' !== $list_type ) {
-					$flush_list();
+					$this->flush_markdown_list( $html, $list_items, $list_type );
 				}
 				$list_type    = 'ul';
 				$list_items[] = $this->render_inline_markdown_html( (string) $matches[1] );
 				continue;
 			}
 			if ( preg_match( '/^\\d+\\.\\s+(.+)$/', $line, $matches ) ) {
-				$flush_paragraph();
+				$this->flush_markdown_paragraph( $html, $paragraph_lines );
 				if ( '' !== $list_type && 'ol' !== $list_type ) {
-					$flush_list();
+					$this->flush_markdown_list( $html, $list_items, $list_type );
 				}
 				$list_type    = 'ol';
 				$list_items[] = $this->render_inline_markdown_html( (string) $matches[1] );
 				continue;
 			}
-			$flush_list();
+			$this->flush_markdown_list( $html, $list_items, $list_type );
 			$paragraph_lines[] = $this->render_inline_markdown_html( $line );
 		}
-		$flush_list();
-		$flush_paragraph();
+		$this->flush_markdown_list( $html, $list_items, $list_type );
+		$this->flush_markdown_paragraph( $html, $paragraph_lines );
 
 		return implode( "\n\n", $html );
+	}
+
+	/**
+	 * Flushes one accumulated markdown list into the output.
+	 *
+	 * @param array<int,string> $html Output fragments.
+	 * @param array<int,string> $list_items Escaped list items.
+	 * @param string            $list_type List element name.
+	 * @return void
+	 */
+	private function flush_markdown_list( array &$html, array &$list_items, &$list_type ) {
+		if ( empty( $list_items ) || '' === $list_type ) {
+			$list_items = array();
+			$list_type  = '';
+			return;
+		}
+
+		$html[]     = '<' . $list_type . '><li>' . implode( '</li><li>', $list_items ) . '</li></' . $list_type . '>';
+		$list_items = array();
+		$list_type  = '';
+	}
+
+	/**
+	 * Flushes accumulated markdown paragraph lines into the output.
+	 *
+	 * @param array<int,string> $html Output fragments.
+	 * @param array<int,string> $paragraph_lines Escaped paragraph lines.
+	 * @return void
+	 */
+	private function flush_markdown_paragraph( array &$html, array &$paragraph_lines ) {
+		if ( empty( $paragraph_lines ) ) {
+			return;
+		}
+
+		$html[]          = '<p>' . implode( "<br />\n", $paragraph_lines ) . '</p>';
+		$paragraph_lines = array();
 	}
 
 	/**
@@ -8186,276 +8205,6 @@ final class Core_Write_Package {
 			'backup_available'           => '' !== $backup_path && is_readable( $backup_path ),
 			'rollback_available'         => '' !== $backup_path && is_readable( $backup_path ),
 		);
-	}
-
-	/**
-	 * Builds exact old->new reference pairs for a replacement plan.
-	 *
-	 * @param array<string,mixed> $plan Replacement plan.
-	 * @return array<int,array{old:string,new:string}>
-	 */
-	private function media_content_reference_pairs_for_plan( array $plan ) {
-		$before = is_array( $plan['before'] ?? null ) ? $plan['before'] : array();
-		$after = is_array( $plan['after'] ?? null ) ? $plan['after'] : array();
-		$old_relative = $this->normalize_media_relative_file( (string) ( $before['relative_file'] ?? '' ) );
-		$new_relative = $this->normalize_media_relative_file( (string) ( $after['relative_file'] ?? '' ) );
-		$old_url = esc_url_raw( (string) ( $before['url'] ?? '' ) );
-		$new_url = esc_url_raw( (string) ( $after['url'] ?? '' ) );
-		$old_path = $this->media_content_reference_url_path( $old_url );
-		$new_path = $this->media_content_reference_url_path( $new_url );
-		$pairs = array(
-			array( 'old' => $old_url, 'new' => $new_url ),
-			array( 'old' => $old_path, 'new' => $new_path ),
-			array( 'old' => $old_relative, 'new' => $new_relative ),
-		);
-
-		$current = is_array( $plan['_current'] ?? null ) ? $plan['_current'] : array();
-		$metadata = is_array( $current['metadata'] ?? null ) ? $current['metadata'] : array();
-		foreach ( $this->media_content_reference_source_relative_files( $metadata, $old_relative ) as $source_relative ) {
-			$source_url = $this->media_url_for_relative_file( $source_relative );
-			$source_path = $this->media_content_reference_url_path( $source_url );
-			$pairs[] = array( 'old' => $source_url, 'new' => $new_url );
-			$pairs[] = array( 'old' => $source_path, 'new' => $new_path );
-			$pairs[] = array( 'old' => $source_relative, 'new' => $new_relative );
-		}
-		$sizes = is_array( $metadata['sizes'] ?? null ) ? $metadata['sizes'] : array();
-		$old_dir = dirname( $old_relative );
-		$old_dir = '.' !== $old_dir ? trim( $old_dir, '/' ) : '';
-		foreach ( $sizes as $size ) {
-			$size = is_array( $size ) ? $size : array();
-			$file = $this->sanitize_media_file_name( (string) ( $size['file'] ?? '' ) );
-			if ( '' === $file ) {
-				continue;
-			}
-			$size_relative = '' !== $old_dir ? $old_dir . '/' . $file : $file;
-			$size_url = $this->media_url_for_relative_file( $size_relative );
-			$size_path = $this->media_content_reference_url_path( $size_url );
-			$pairs[] = array( 'old' => $size_url, 'new' => $new_url );
-			$pairs[] = array( 'old' => $size_path, 'new' => $new_path );
-			$pairs[] = array( 'old' => $size_relative, 'new' => $new_relative );
-		}
-
-		return $this->merge_media_content_reference_pairs( $pairs, array() );
-	}
-
-	/**
-	 * Adds old sized variant references found in content even when not in metadata.
-	 *
-	 * @param string              $content Post content.
-	 * @param array<string,mixed> $plan Replacement plan.
-	 * @return array<int,array{old:string,new:string}>
-	 */
-	private function media_content_reference_dynamic_sized_pairs( $content, array $plan ) {
-		$before = is_array( $plan['before'] ?? null ) ? $plan['before'] : array();
-		$after = is_array( $plan['after'] ?? null ) ? $plan['after'] : array();
-		$old_relative = $this->normalize_media_relative_file( (string) ( $before['relative_file'] ?? '' ) );
-		$new_relative = $this->normalize_media_relative_file( (string) ( $after['relative_file'] ?? '' ) );
-		$new_url = esc_url_raw( (string) ( $after['url'] ?? '' ) );
-		$new_path = $this->media_content_reference_url_path( $new_url );
-		$current = is_array( $plan['_current'] ?? null ) ? $plan['_current'] : array();
-		$metadata = is_array( $current['metadata'] ?? null ) ? $current['metadata'] : array();
-		if ( '' === $new_url ) {
-			return array();
-		}
-		$pairs = array();
-		foreach ( $this->media_content_reference_source_relative_files( $metadata, $old_relative ) as $source_relative ) {
-			$old_basename = basename( $source_relative );
-			$stem = preg_replace( '/\.[^.]+$/', '', $old_basename );
-			$extension = pathinfo( $old_basename, PATHINFO_EXTENSION );
-			if ( '' === (string) $stem || '' === (string) $extension ) {
-				continue;
-			}
-			$pattern = '/' . preg_quote( (string) $stem, '/' ) . '-[0-9]{2,5}x[0-9]{2,5}\.' . preg_quote( (string) $extension, '/' ) . '/u';
-			if ( ! preg_match_all( $pattern, (string) $content, $matches ) ) {
-				continue;
-			}
-			$old_dir = dirname( $source_relative );
-			$old_dir = '.' !== $old_dir ? trim( $old_dir, '/' ) : '';
-			foreach ( array_unique( (array) ( $matches[0] ?? array() ) ) as $sized_basename ) {
-				$sized_basename = $this->sanitize_media_file_name( (string) $sized_basename );
-				if ( '' === $sized_basename ) {
-					continue;
-				}
-				$size_relative = '' !== $old_dir ? $old_dir . '/' . $sized_basename : $sized_basename;
-				$size_url = $this->media_url_for_relative_file( $size_relative );
-				$size_path = $this->media_content_reference_url_path( $size_url );
-				$pairs[] = array( 'old' => $size_url, 'new' => $new_url );
-				$pairs[] = array( 'old' => $size_path, 'new' => $new_path );
-				$pairs[] = array( 'old' => $size_relative, 'new' => $new_relative );
-			}
-		}
-		return $pairs;
-	}
-
-	/**
-	 * Returns original/current uploads-relative files that may appear in post content.
-	 *
-	 * @param array<string,mixed> $metadata Attachment metadata.
-	 * @param string              $current_relative Current uploads-relative file.
-	 * @return array<int,string>
-	 */
-	private function media_content_reference_source_relative_files( array $metadata, $current_relative ) {
-		$current_relative = $this->normalize_media_relative_file( $current_relative );
-		$base_dir = '' !== $current_relative ? dirname( $current_relative ) : '';
-		$base_dir = '.' !== $base_dir ? trim( $base_dir, '/' ) : '';
-		$candidates = array(
-			$current_relative,
-			(string) ( $metadata['file'] ?? '' ),
-		);
-		$original_image = $this->sanitize_media_file_name( (string) ( $metadata['original_image'] ?? '' ) );
-		if ( '' !== $original_image ) {
-			$candidates[] = false === strpos( $original_image, '/' ) && '' !== $base_dir ? $base_dir . '/' . $original_image : $original_image;
-		}
-		foreach ( $candidates as $candidate ) {
-			$variant = $this->media_content_reference_without_unique_suffix( $candidate );
-			if ( '' !== $variant ) {
-				$candidates[] = $variant;
-			}
-		}
-
-		$files = array();
-		foreach ( $candidates as $candidate ) {
-			$file = $this->normalize_media_relative_file( (string) $candidate );
-			if ( '' !== $file ) {
-				$files[ $file ] = $file;
-			}
-		}
-		return array_values( $files );
-	}
-
-	/**
-	 * Infers the pre-unique-suffix relative file when WordPress stored "-1".
-	 *
-	 * @param string $relative_file Uploads-relative file.
-	 * @return string
-	 */
-	private function media_content_reference_without_unique_suffix( $relative_file ) {
-		$relative_file = $this->normalize_media_relative_file( $relative_file );
-		$basename = basename( $relative_file );
-		if ( ! preg_match( '/^(.+)-[0-9]+(\.[^.]+)$/', $basename, $matches ) ) {
-			return '';
-		}
-		$dir = dirname( $relative_file );
-		$dir = '.' !== $dir ? trim( $dir, '/' ) : '';
-		$file = $this->sanitize_media_file_name( (string) $matches[1] . (string) $matches[2] );
-		if ( '' === $file ) {
-			return '';
-		}
-		return '' !== $dir ? $dir . '/' . $file : $file;
-	}
-
-	/**
-	 * Merges old->new reference pairs.
-	 *
-	 * @param array<int,array<string,string>> $primary Primary pairs.
-	 * @param array<int,array<string,string>> $secondary Secondary pairs.
-	 * @return array<int,array{old:string,new:string}>
-	 */
-	private function merge_media_content_reference_pairs( array $primary, array $secondary ) {
-		$merged = array();
-		foreach ( array_merge( $primary, $secondary ) as $pair ) {
-			$old = trim( (string) ( is_array( $pair ) ? ( $pair['old'] ?? '' ) : '' ) );
-			$new = trim( (string) ( is_array( $pair ) ? ( $pair['new'] ?? '' ) : '' ) );
-			if ( '' === $old || '' === $new || $old === $new ) {
-				continue;
-			}
-			$key = $old . "\n" . $new;
-			$merged[ $key ] = array(
-				'old' => $old,
-				'new' => $new,
-			);
-		}
-		return array_values( $merged );
-	}
-
-	/**
-	 * Returns bounded candidate posts likely to contain old media references.
-	 *
-	 * @param int           $attachment_id Attachment id.
-	 * @param array<string> $needles Search strings.
-	 * @param int           $limit Candidate limit.
-	 * @return array<int,object>
-	 */
-	private function media_content_reference_candidate_posts( $attachment_id, array $needles, $limit ) {
-		$attachment_id = absint( $attachment_id );
-		$limit = max( 1, min( 150, absint( $limit ) ) );
-		if ( isset( $GLOBALS['npcink_abilities_toolkit_unit_style_posts'] ) && is_array( $GLOBALS['npcink_abilities_toolkit_unit_style_posts'] ) ) {
-			return get_posts( array( 'posts_per_page' => $limit ) );
-		}
-
-		$candidates = array();
-		foreach ( array_slice( array_values( array_filter( array_unique( $needles ) ) ), 0, 25 ) as $needle ) {
-			$needle = trim( (string) $needle );
-			if ( '' === $needle ) {
-				continue;
-			}
-			foreach (
-				get_posts(
-					array(
-						'post_type'      => 'any',
-						'post_status'    => array( 'publish', 'future', 'draft', 'pending', 'private' ),
-						'posts_per_page' => $limit,
-						'orderby'        => 'ID',
-						'order'          => 'DESC',
-						's'              => $needle,
-					)
-				) as $post
-			) {
-				if ( is_object( $post ) && 'attachment' !== (string) ( $post->post_type ?? '' ) ) {
-					$candidates[ absint( $post->ID ?? 0 ) ] = $post;
-				}
-				if ( count( $candidates ) >= $limit ) {
-					break 2;
-				}
-			}
-		}
-		if ( ! empty( $candidates ) ) {
-			return array_values( $candidates );
-		}
-
-		return get_posts(
-			array(
-				'post_type'      => 'any',
-				'post_status'    => array( 'publish', 'future', 'draft', 'pending', 'private' ),
-				'posts_per_page' => $limit,
-				'orderby'        => 'ID',
-				'order'          => 'DESC',
-				's'              => 'wp-image-' . $attachment_id,
-			)
-		);
-	}
-
-	/**
-	 * Builds bounded search needles for candidate post lookup.
-	 *
-	 * @param int                                      $attachment_id Attachment id.
-	 * @param array<string,mixed>                      $plan Replacement plan.
-	 * @param array<int,array{old:string,new:string}> $pairs Reference pairs.
-	 * @return array<int,string>
-	 */
-	private function media_content_reference_needles( $attachment_id, array $plan, array $pairs ) {
-		$needles = array( 'wp-image-' . absint( $attachment_id ), '"id":' . absint( $attachment_id ), 'data-id="' . absint( $attachment_id ) . '"' );
-		foreach ( $pairs as $pair ) {
-			$needles[] = (string) ( $pair['old'] ?? '' );
-		}
-		$before = is_array( $plan['before'] ?? null ) ? $plan['before'] : array();
-		$old_relative = $this->normalize_media_relative_file( (string) ( $before['relative_file'] ?? '' ) );
-		$old_stem = preg_replace( '/\.[^.]+$/', '', basename( $old_relative ) );
-		if ( strlen( (string) $old_stem ) >= 4 ) {
-			$needles[] = (string) $old_stem;
-		}
-		return array_values( array_filter( array_unique( array_map( 'strval', $needles ) ) ) );
-	}
-
-	/**
-	 * Returns the path component of a URL.
-	 *
-	 * @param string $url URL.
-	 * @return string
-	 */
-	private function media_content_reference_url_path( $url ) {
-		$path = wp_parse_url( (string) $url, PHP_URL_PATH );
-		return is_string( $path ) ? $path : '';
 	}
 
 	/**

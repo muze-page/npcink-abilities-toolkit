@@ -1,7 +1,7 @@
 # Next Stage Operating Standard
 
 Status: active
-Date: 2026-06-19
+Date: 2026-07-30
 
 This standard captures the next-stage operating rules for
 `npcink-abilities-toolkit` after the 0.5 contract-readiness line. It turns the
@@ -65,13 +65,12 @@ During the current freeze/observe period, do these in order:
 
 Current stage update:
 
-- The article optimization and article media handoff proofs are closed-loop
-  proven from current main branches. Keep observing; no Toolkit ability gap is
-  open from those proofs.
-- The next active proof target is Block theme / Gutenberg intent routing. Run
-  it as a narrow host-side proof that discovers existing abilities through the
-  WordPress Abilities API, maps the intent to proposal/write targets, and stops
-  before write execution.
+- The article optimization, article media handoff, and Block theme / Gutenberg
+  intent-routing proofs are closed-loop proven. Keep observing; no Toolkit
+  ability gap is open from those proofs.
+- There is no active proof target. Rerun the affected proof when a host,
+  WordPress, or public ability contract changes, and reopen Toolkit work only
+  when the failure identifies a small reusable contract gap owned here.
 - Keep third-party integration improvements on packaged discovery surfaces:
   `readme.txt`, the admin discovery page, and REST/contract endpoint values.
   Do not ship the repository `docs/`, `examples/`, or scripts in the release
@@ -81,12 +80,12 @@ Current stage update:
 
 ### 1. Promote Workflow Proof Before Ability Expansion
 
-Use host workflow proofs as the main discovery mechanism. The immediate
-workflow proof targets are:
+Use host workflow proofs as the main discovery mechanism. The closed workflow
+proof targets retained for regression evidence are:
 
 - `npcink-abilities-toolkit/recipes/article-optimization`
 - `npcink-abilities-toolkit/recipes/article-media-handoff`
-- Block theme / Gutenberg intent routing, as a narrow proof only
+- Block theme / Gutenberg intent routing
 
 The current proof ledger is tracked in `docs/host-proof-status.md`.
 

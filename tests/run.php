@@ -22,6 +22,7 @@ use Npcink_Abilities_Toolkit\Registry\Category_Registrar;
 use Npcink_Abilities_Toolkit\Registry\Contract_Normalizer;
 use Npcink_Abilities_Toolkit\Registry\Schema_Normalizer;
 use Npcink_Abilities_Toolkit\Rest\Contract_Controller;
+use Npcink_Abilities_Toolkit\Security\Permission_Callbacks;
 use Npcink_Abilities_Toolkit\Support\Gutenberg_Block_Document;
 
 $assertions = 0;
@@ -47,6 +48,10 @@ function npcink_abilities_toolkit_assert_true( $condition, $message ) {
 function npcink_abilities_toolkit_assert_same( $expected, $actual, $message ) {
 	npcink_abilities_toolkit_assert_true( $expected === $actual, $message . ' Expected ' . var_export( $expected, true ) . ', got ' . var_export( $actual, true ) );
 }
+
+npcink_abilities_toolkit_assert_same( false, current_user_can( 'manage_option' ), 'unit capability defaults fail closed for unknown or misspelled capabilities' );
+$unknown_capability_callback = Permission_Callbacks::for_capability( 'manage_option' );
+npcink_abilities_toolkit_assert_same( false, $unknown_capability_callback(), 'permission callbacks preserve fail-closed behavior for unknown capabilities' );
 
 npcink_abilities_toolkit_assert_true(
 	false !== strpos( $composer_source, '"pr:publish": "bash scripts/publish-pr.sh"' )
@@ -233,6 +238,7 @@ function npcink_abilities_toolkit_assert_observability_event_is_metadata_only( a
 $admin_test_page = file_get_contents( __DIR__ . '/../includes/Admin/Test_Page.php' );
 $autoloader_source = file_get_contents( __DIR__ . '/../includes/Autoloader.php' );
 $core_write_source = file_get_contents( __DIR__ . '/../includes/Packages/Core_Write_Package.php' );
+$media_reference_discovery_write_trait = file_get_contents( __DIR__ . '/../includes/Packages/Write_Traits/Media_Reference_Discovery_Write_Methods.php' );
 $post_attribute_write_trait = file_get_contents( __DIR__ . '/../includes/Packages/Write_Traits/Post_Attribute_Write_Methods.php' );
 $site_editor_write_trait = file_get_contents( __DIR__ . '/../includes/Packages/Write_Traits/Site_Editor_Write_Methods.php' );
 $structural_split_plan = file_get_contents( __DIR__ . '/../docs/structural-split-plan.md' );
@@ -250,7 +256,15 @@ foreach ( array( 'update_post_blocks', 'update_template_blocks', 'upsert_templat
 foreach ( array( 'npcink-abilities-toolkit/update-post-blocks', 'npcink-abilities-toolkit/update-template-blocks', 'npcink-abilities-toolkit/upsert-template-blocks', 'npcink-abilities-toolkit/update-template-part-blocks' ) as $site_editor_ability_id ) {
 	npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, "'" . $site_editor_ability_id . "' => array(" ), 'Core write package remains the definition owner for Site Editor ability: ' . $site_editor_ability_id );
 }
-foreach ( array( 'Baseline Inventory', 'Accepted Sequence', 'Gate Per Slice', 'Core_Write_Package.php', 'tests/run.php', 'Post_Attribute_Write_Methods', 'Site_Editor_Write_Methods' ) as $required_structural_split_text ) {
+npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, 'use Media_Reference_Discovery_Write_Methods;' ), 'Core write package composes the media reference discovery trait' );
+foreach ( array( 'media_content_reference_pairs_for_plan', 'media_content_reference_dynamic_sized_pairs', 'media_content_reference_source_relative_files', 'media_content_reference_without_unique_suffix', 'merge_media_content_reference_pairs', 'media_content_reference_candidate_posts', 'media_content_reference_needles', 'media_content_reference_url_path' ) as $moved_media_reference_discovery_method ) {
+	npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false === strpos( $core_write_source, 'function ' . $moved_media_reference_discovery_method . '(' ), 'Core write package does not duplicate moved media reference discovery method: ' . $moved_media_reference_discovery_method );
+	npcink_abilities_toolkit_assert_true( is_string( $media_reference_discovery_write_trait ) && false !== strpos( $media_reference_discovery_write_trait, 'function ' . $moved_media_reference_discovery_method . '(' ), 'media reference discovery trait owns moved method: ' . $moved_media_reference_discovery_method );
+}
+foreach ( array( 'build_media_content_reference_repairs', 'validate_media_content_reference_repair_permissions', 'apply_media_content_reference_repairs', 'media_file_operation_verification' ) as $retained_media_reference_write_method ) {
+	npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, 'function ' . $retained_media_reference_write_method . '(' ), 'Core write package retains media reference governance method: ' . $retained_media_reference_write_method );
+}
+foreach ( array( 'Baseline Inventory', 'Accepted Sequence', 'Gate Per Slice', 'Core_Write_Package.php', 'tests/run.php', 'Post_Attribute_Write_Methods', 'Site_Editor_Write_Methods', 'Media_Reference_Discovery_Write_Methods' ) as $required_structural_split_text ) {
 	npcink_abilities_toolkit_assert_true( is_string( $structural_split_plan ) && false !== strpos( $structural_split_plan, $required_structural_split_text ), 'structural split plan preserves incremental extraction guidance: ' . $required_structural_split_text );
 }
 npcink_abilities_toolkit_assert_true( false !== strpos( $core_read_package_source, 'use Media_Alt_Caption_Read_Methods;' ), 'Core read package composes the media ALT/caption read trait' );
@@ -510,23 +524,24 @@ npcink_abilities_toolkit_assert_true( is_string( $block_theme_host_proof_runner 
 npcink_abilities_toolkit_assert_true( is_string( $block_theme_host_proof_runner ) && false !== strpos( $block_theme_host_proof_runner, 'Set WP_PATH' ), 'block-theme host proof requires an explicit real WordPress target' );
 foreach (
 	array(
-		'Next-Stage Execution Queue',
+		'Closed Proof State And Observation Queue',
+		'All three proof targets in the ledger are closed',
 		'Keep Toolkit in freeze/observe mode and do not add first-party abilities',
-		'Block theme / Gutenberg intent-routing proof',
-		'must discover existing abilities',
+		'Real-host proof passed on 2026-07-11',
+		'No new Toolkit ability gap was found',
 		'examples and long-form docs outside the release zip',
 		'does not block basic third-party provider',
 	) as $required
 ) {
-	npcink_abilities_toolkit_assert_true( is_string( $host_proof_status ) && false !== strpos( $host_proof_status, $required ), 'host proof status keeps next-stage execution queue: ' . $required );
+	npcink_abilities_toolkit_assert_true( is_string( $host_proof_status ) && false !== strpos( $host_proof_status, $required ), 'host proof status keeps the closed proof state: ' . $required );
 }
 
 $next_stage_standard = file_get_contents( __DIR__ . '/../docs/next-stage-operating-standard.md' );
 foreach (
 	array(
 		'Current stage update',
-		'Keep observing; no Toolkit ability gap is',
-		'Block theme / Gutenberg intent routing',
+		'intent-routing proofs are closed-loop proven',
+		'There is no active proof target',
 		'Do not ship the repository `docs/`, `examples/`, or scripts',
 	) as $required
 ) {

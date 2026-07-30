@@ -48,10 +48,16 @@ Git workspace:
 
 ```sh
 cd /Users/muze/gitee/npcink-abilities-toolkit
+git fetch --prune --tags origin
 composer check:boundary
 composer check:wporg
 WP_PATH=/path/to/wordpress composer release:verify
 ```
+
+Release packaging and SVN preparation require a clean, non-shallow Git
+worktree. If the requested version already has a Git tag, `HEAD` must match that
+tag's commit exactly. The release ZIP command prints the source commit and
+SHA-256 checksum so the reviewed artifact can be tied back to immutable source.
 
 For Local.app sites that expose MySQL only through a socket, pass the socket to
 WP-CLI through the package check helper:

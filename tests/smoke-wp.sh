@@ -67,9 +67,26 @@ run_wp() {
 	fi
 }
 
+plugin_activated_by_smoke=false
+light_profile_mu_plugin=""
+cleanup_smoke_state() {
+	if [[ -n "$light_profile_mu_plugin" ]]; then
+		rm -f "$light_profile_mu_plugin"
+		light_profile_mu_plugin=""
+	fi
+	if [[ "$plugin_activated_by_smoke" == "true" ]]; then
+		if ! run_wp plugin deactivate "$PLUGIN_SLUG" >/dev/null; then
+			echo "Unable to restore the plugin's inactive state after smoke." >&2
+		fi
+		plugin_activated_by_smoke=false
+	fi
+}
+trap cleanup_smoke_state EXIT
+
 run_wp core is-installed >/dev/null
 if ! run_wp plugin is-active "$PLUGIN_SLUG" >/dev/null 2>&1; then
 	run_wp plugin activate "$PLUGIN_SLUG" >/dev/null
+	plugin_activated_by_smoke=true
 fi
 NPCINK_ABILITIES_TOOLKIT_SMOKE_PROFILE=default run_wp eval-file "$ROOT_DIR/tests/smoke-wp.php"
 
@@ -79,11 +96,7 @@ if [[ -z "$mu_plugin_dir" ]]; then
 	exit 1
 fi
 mkdir -p "$mu_plugin_dir"
-light_profile_mu_plugin="$mu_plugin_dir/npcink-abilities-toolkit-light-profile-smoke.php"
-cleanup_light_profile() {
-	rm -f "$light_profile_mu_plugin"
-}
-trap cleanup_light_profile EXIT
+light_profile_mu_plugin="$(mktemp "$mu_plugin_dir/npcink-abilities-toolkit-light-profile-smoke.XXXXXX.php")"
 cat > "$light_profile_mu_plugin" <<'PHP'
 <?php
 add_filter(

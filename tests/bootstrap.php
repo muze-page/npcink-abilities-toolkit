@@ -18,6 +18,19 @@ if ( ! defined( 'MB_IN_BYTES' ) ) {
 	define( 'MB_IN_BYTES', 1048576 );
 }
 
+$GLOBALS['npcink_abilities_toolkit_unit_default_current_user_caps'] = array(
+	'delete_post'        => true,
+	'edit_pages'         => true,
+	'edit_post'          => true,
+	'edit_posts'         => true,
+	'edit_theme_options' => true,
+	'manage_categories'  => true,
+	'manage_options'     => true,
+	'moderate_comments'  => true,
+	'publish_post'       => true,
+	'upload_files'       => true,
+);
+
 if ( ! function_exists( 'sanitize_key' ) ) {
 	function sanitize_key( $key ) {
 		$key = strtolower( (string) $key );
@@ -294,7 +307,11 @@ if ( ! function_exists( 'current_user_can' ) ) {
 			return ! empty( $cap_map[ $capability ] );
 		}
 
-		return 'do_not_allow' !== $capability;
+		$default_cap_map = isset( $GLOBALS['npcink_abilities_toolkit_unit_default_current_user_caps'] ) && is_array( $GLOBALS['npcink_abilities_toolkit_unit_default_current_user_caps'] )
+			? $GLOBALS['npcink_abilities_toolkit_unit_default_current_user_caps']
+			: array();
+
+		return array_key_exists( $capability, $default_cap_map ) && ! empty( $default_cap_map[ $capability ] );
 	}
 }
 

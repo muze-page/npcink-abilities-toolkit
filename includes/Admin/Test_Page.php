@@ -1083,20 +1083,6 @@ final class Test_Page {
 		$request->set_query_params( array( 'input' => $this->get_readonly_check_input( $check ) ) );
 		$response = rest_do_request( $request );
 
-		if ( function_exists( 'is_wp_error' ) && is_wp_error( $response ) ) {
-			wp_send_json(
-				array(
-					'ability_id' => $ability_id,
-					'status'     => 500,
-					'body'       => array(
-						'code'    => $response->get_error_code(),
-						'message' => $response->get_error_message(),
-					),
-				),
-				500
-			);
-		}
-
 		$status = is_object( $response ) && method_exists( $response, 'get_status' ) ? (int) $response->get_status() : 500;
 		$body   = is_object( $response ) && method_exists( $response, 'get_data' ) ? $response->get_data() : null;
 

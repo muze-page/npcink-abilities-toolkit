@@ -922,7 +922,7 @@ trait Page_Pattern_Read_Methods {
 	 * Renders the built-in landing pattern as parsed Gutenberg blocks.
 	 *
 	 * @param array<string,mixed> $variables Pattern variables.
-	 * @param array<string,string> $options Pattern options.
+	 * @param array<string,mixed> $options Pattern options.
 	 * @return array<int,array<string,mixed>>
 	 */
 	private function render_openai_style_landing_blocks( array $variables, array $options = array() ) {

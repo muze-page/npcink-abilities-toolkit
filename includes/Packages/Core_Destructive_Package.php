@@ -789,9 +789,6 @@ final class Core_Destructive_Package {
 		$deleted = function_exists( 'wp_delete_attachment' )
 			? wp_delete_attachment( $attachment_id, true )
 			: wp_delete_post( $attachment_id, true );
-		if ( is_wp_error( $deleted ) ) {
-			return $deleted;
-		}
 		if ( ! $deleted ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_media_delete_failed', __( 'Attachment deletion failed.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
 		}

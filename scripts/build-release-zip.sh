@@ -14,6 +14,8 @@ fi
 
 cd "$ROOT_DIR"
 
+source_commit="$(bash "$ROOT_DIR/scripts/check-release-source.sh" "$VERSION" "$ROOT_DIR")"
+
 plugin_version="$(php -r '$s=file_get_contents("npcink-abilities-toolkit.php"); if (preg_match("/^[ \t*]*Version:\s*([^\r\n]+)/mi", $s, $m)) { echo trim($m[1]); }')"
 constant_version="$(php -r '$s=file_get_contents("npcink-abilities-toolkit.php"); if (preg_match("/define\(\s*'\''NPCINK_ABILITIES_TOOLKIT_VERSION'\''\s*,\s*'\''([^'\'']+)'\''\s*\)/", $s, $m)) { echo trim($m[1]); }')"
 stable_tag="$(php -r '$s=file_get_contents("readme.txt"); if (preg_match("/^Stable tag:\s*([^\r\n]+)/mi", $s, $m)) { echo trim($m[1]); }')"
@@ -56,4 +58,7 @@ rm -f "$zip_path"
 	zip -qr "$zip_path" "$PLUGIN_SLUG"
 )
 
+zip_sha256="$(php -r 'echo hash_file("sha256", $argv[1]);' "$zip_path")"
+echo "Release source commit: $source_commit" >&2
+echo "Release ZIP SHA-256: $zip_sha256" >&2
 echo "$zip_path"

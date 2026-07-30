@@ -21,6 +21,8 @@ if [[ ! -d "$SVN_WC/.svn" ]]; then
 	exit 1
 fi
 
+source_commit="$(bash "$ROOT_DIR/scripts/check-release-source.sh" "$VERSION" "$ROOT_DIR")"
+
 plugin_version="$(php -r '$s=file_get_contents("npcink-abilities-toolkit.php"); if (preg_match("/^[ \t*]*Version:\s*([^\r\n]+)/mi", $s, $m)) { echo trim($m[1]); }')"
 constant_version="$(php -r '$s=file_get_contents("npcink-abilities-toolkit.php"); if (preg_match("/define\(\s*'\''NPCINK_ABILITIES_TOOLKIT_VERSION'\''\s*,\s*'\''([^'\'']+)'\''\s*\)/", $s, $m)) { echo trim($m[1]); }')"
 stable_tag="$(php -r '$s=file_get_contents("readme.txt"); if (preg_match("/^Stable tag:\s*([^\r\n]+)/mi", $s, $m)) { echo trim($m[1]); }')"
@@ -82,5 +84,6 @@ done
 svn status "$SVN_WC"
 echo
 echo "Prepared WordPress.org SVN working copy for $PLUGIN_SLUG $VERSION."
+echo "Release source commit: $source_commit"
 echo "Review the SVN status above, then commit from your terminal:"
 echo "SVN_USERNAME=muze233 COMMIT_MESSAGE=\"Release $VERSION\" build/commit-wporg-release.sh"
