@@ -64,10 +64,11 @@ introduced for development-era same-directory backups.
 
 ### Add automatic backup TTL deletion now
 
-- Pros: Limits disk growth.
-- Cons: Can remove the only rollback path after an operator mistake.
-- Rejected for now: Backup deletion should be a separate dry-run, proposal, and
-  approval flow.
+- Pros: Limits disk growth while retaining a bounded recovery window.
+- Cons: A restore is no longer possible after expiry.
+- Decision: Accepted by ADR-0006. Cleanup is maintenance-only, targets only the
+  dedicated backup directory, preserves history summaries, and never removes
+  the current attachment.
 
 ## Consequences
 
@@ -76,5 +77,6 @@ introduced for development-era same-directory backups.
 - Restore and rollback continue to work through recorded relative file paths.
 - Future cleanup can target `npcink-abilities-toolkit-backups/` explicitly without scanning all
   media month directories for backup suffixes.
-- Future public capabilities can expose backup listing, restore planning, and
-  explicit cleanup without changing this storage base.
+- Future public capabilities can expose backup listing and restore planning
+  without changing this storage base. Manual deletion remains intentionally out
+  of scope.

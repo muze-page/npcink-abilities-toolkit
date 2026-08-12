@@ -139,6 +139,7 @@ final class Plugin {
 		}
 
 		$this->booted = true;
+		$this->schedule_media_backup_cleanup();
 		$this->load_textdomain();
 		if ( function_exists( 'add_action' ) ) {
 			add_action( 'rest_api_init', array( new Contract_Controller(), 'register_routes' ) );
@@ -168,6 +169,16 @@ final class Plugin {
 		}
 		if ( $this->is_package_enabled( 'read_cache_hooks' ) ) {
 			$this->register_cache_invalidation_hooks();
+		}
+	}
+
+	private function schedule_media_backup_cleanup() {
+		if ( ! function_exists( 'wp_next_scheduled' ) || ! function_exists( 'wp_schedule_event' ) || ! function_exists( 'has_action' ) ) {
+			return;
+		}
+		$hook = 'npcink_abilities_toolkit_cleanup_media_backups';
+		if ( ! wp_next_scheduled( $hook ) ) {
+			wp_schedule_event( time() + ( defined( 'HOUR_IN_SECONDS' ) ? HOUR_IN_SECONDS : 3600 ), 'daily', $hook );
 		}
 	}
 
