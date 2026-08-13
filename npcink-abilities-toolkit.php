@@ -43,4 +43,13 @@ if ( function_exists( 'register_activation_hook' ) ) {
 			$plugin->abilities()->emit_manual_catalog_refresh( 'activation' );
 		}
 	);
+	register_deactivation_hook(
+		__FILE__,
+		static function () {
+			$hook = 'npcink_abilities_toolkit_cleanup_media_backups';
+			if ( function_exists( 'wp_clear_scheduled_hook' ) ) {
+				wp_clear_scheduled_hook( $hook );
+			}
+		}
+	);
 }

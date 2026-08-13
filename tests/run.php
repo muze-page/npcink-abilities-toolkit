@@ -6306,6 +6306,231 @@ remove_all_filters( 'npcink_abilities_toolkit_media_file_copy_blocked' );
 unset( $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
 npcink_abilities_toolkit_assert_true( is_wp_error( $media_restore_copy_failure ) && 'npcink_abilities_toolkit_media_restore_failed' === $media_restore_copy_failure->get_error_code(), 'restore-media-backup commit reports original backup restore copy failures' );
 npcink_abilities_toolkit_assert_same( '2026/06/workflow-diagram-image-optimized.webp', get_post_meta( 79, '_wp_attached_file', true ), 'restore-media-backup copy failure leaves the optimized attachment pointer unchanged' );
+
+$media_restore_original_pointer = (string) get_post_meta( 79, '_wp_attached_file', true );
+$media_restore_original_mime = (string) get_post_mime_type( 79 );
+$media_restore_original_metadata = wp_get_attachment_metadata( 79 );
+$media_restore_original_history = get_post_meta( 79, '_npcink_ai_media_file_replacement_history', true );
+$media_restore_original_latest = get_post_meta( 79, '_npcink_ai_media_latest_file_replacement', true );
+$media_restore_target_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/2026/06/workflow-diagram-image.jpg';
+file_put_contents( $media_restore_target_path, 'preexisting-target-bytes' );
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][83] = (object) array(
+	'ID'           => 83,
+	'post_title'   => 'Media Restore Compensation Candidate',
+	'post_status'  => 'publish',
+	'post_type'    => 'post',
+	'post_excerpt' => '',
+	'post_content' => '<p><img src="https://example.test/wp-content/uploads/2026/06/workflow-diagram-image-optimized.webp" /></p>',
+	'post_name'    => 'media-restore-compensation-candidate',
+	'post_author'  => 7,
+);
+$media_restore_original_content = (string) $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][83]->post_content;
+$restore_reference_failed_once = false;
+$GLOBALS['npcink_abilities_toolkit_unit_wp_update_post_callback'] = static function ( array $postarr ) use ( &$restore_reference_failed_once ) {
+	if ( 83 === (int) ( $postarr['ID'] ?? 0 ) && array_key_exists( 'post_content', $postarr ) && ! $restore_reference_failed_once ) {
+		$restore_reference_failed_once = true;
+		return new WP_Error( 'unit_media_restore_reference_failure', 'Injected restore reference failure.' );
+	}
+	return null;
+};
+$GLOBALS['npcink_ai_runtime_wp_ability_context']['context'] = array(
+	'approval_commit_authorized' => true,
+	'approval_id'                => 'approval-media-restore-compensation',
+);
+$media_restore_reference_failure = $core_write_package->restore_media_backup(
+	array(
+		'attachment_id'                  => 79,
+		'backup_id'                      => 'media_replace_unit',
+		'expected_current_relative_file' => $media_restore_original_pointer,
+		'target_conflict_mode'           => 'overwrite',
+		'commit'                         => true,
+	)
+);
+unset( $GLOBALS['npcink_abilities_toolkit_unit_wp_update_post_callback'], $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
+npcink_abilities_toolkit_assert_true( is_wp_error( $media_restore_reference_failure ) && 'npcink_abilities_toolkit_cloud_adoption_mutation_conflict' === $media_restore_reference_failure->get_error_code(), 'restore-media-backup preserves the reference repair failure after complete compensation' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_pointer, get_post_meta( 79, '_wp_attached_file', true ), 'restore reference failure restores the attachment pointer' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_mime, get_post_mime_type( 79 ), 'restore reference failure restores the attachment MIME' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_metadata, wp_get_attachment_metadata( 79 ), 'restore reference failure restores attachment metadata' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_content, (string) $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][83]->post_content, 'restore reference failure restores affected post content' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_history, get_post_meta( 79, '_npcink_ai_media_file_replacement_history', true ), 'restore reference failure preserves replacement history' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_latest, get_post_meta( 79, '_npcink_ai_media_latest_file_replacement', true ), 'restore reference failure preserves latest replacement projection' );
+npcink_abilities_toolkit_assert_same( 'preexisting-target-bytes', file_get_contents( $media_restore_target_path ), 'restore reference failure restores overwritten target bytes' );
+
+$restore_late_drift_injected = false;
+add_filter(
+	'npcink_abilities_toolkit_media_file_copy_blocked',
+	static function ( $blocked, $source_path, $target_path, $context ) use ( &$restore_late_drift_injected ) {
+		unset( $source_path, $target_path );
+		if ( ! $restore_late_drift_injected && is_array( $context ) && 'restore_media_backup' === (string) ( $context['operation'] ?? '' ) && 'backup_current' === (string) ( $context['step'] ?? '' ) ) {
+			$restore_late_drift_injected = true;
+			$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][83]->post_content .= '<p>Concurrent edit.</p>';
+		}
+		return $blocked;
+	},
+	10,
+	4
+);
+$GLOBALS['npcink_ai_runtime_wp_ability_context']['context'] = array(
+	'approval_commit_authorized' => true,
+	'approval_id'                => 'approval-media-restore-drift',
+);
+$media_restore_late_drift = $core_write_package->restore_media_backup(
+	array(
+		'attachment_id'                  => 79,
+		'backup_id'                      => 'media_replace_unit',
+		'expected_current_relative_file' => $media_restore_original_pointer,
+		'target_conflict_mode'           => 'overwrite',
+		'commit'                         => true,
+	)
+);
+remove_all_filters( 'npcink_abilities_toolkit_media_file_copy_blocked' );
+unset( $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
+npcink_abilities_toolkit_assert_true(
+	is_wp_error( $media_restore_late_drift ) && 'npcink_abilities_toolkit_media_restore_precommit_drift' === $media_restore_late_drift->get_error_code(),
+	'restore-media-backup blocks a concurrent post-content change at the late precommit gate; got ' . ( is_wp_error( $media_restore_late_drift ) ? $media_restore_late_drift->get_error_code() : gettype( $media_restore_late_drift ) )
+);
+npcink_abilities_toolkit_assert_same( $media_restore_original_pointer, get_post_meta( 79, '_wp_attached_file', true ), 'late restore drift leaves the attachment pointer unchanged' );
+npcink_abilities_toolkit_assert_same( 'preexisting-target-bytes', file_get_contents( $media_restore_target_path ), 'late restore drift leaves target bytes unchanged' );
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][83]->post_content = $media_restore_original_content;
+
+$restore_history_failed_once = false;
+$GLOBALS['npcink_abilities_toolkit_unit_update_post_meta_callback'] = static function ( $post_id, $meta_key ) use ( &$restore_history_failed_once ) {
+	if ( 79 === (int) $post_id && '_npcink_ai_media_file_replacement_history' === (string) $meta_key && ! $restore_history_failed_once ) {
+		$restore_history_failed_once = true;
+		return false;
+	}
+	return null;
+};
+$GLOBALS['npcink_ai_runtime_wp_ability_context']['context'] = array(
+	'approval_commit_authorized' => true,
+	'approval_id'                => 'approval-media-restore-history-failure',
+);
+$media_restore_history_failure = $core_write_package->restore_media_backup(
+	array(
+		'attachment_id'                  => 79,
+		'backup_id'                      => 'media_replace_unit',
+		'expected_current_relative_file' => $media_restore_original_pointer,
+		'target_conflict_mode'           => 'overwrite',
+		'commit'                         => true,
+	)
+);
+unset( $GLOBALS['npcink_abilities_toolkit_unit_update_post_meta_callback'], $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
+npcink_abilities_toolkit_assert_true( is_wp_error( $media_restore_history_failure ) && 'npcink_abilities_toolkit_cloud_adoption_mutation_conflict' === $media_restore_history_failure->get_error_code(), 'restore-media-backup preserves a history CAS failure after complete compensation' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_pointer, get_post_meta( 79, '_wp_attached_file', true ), 'restore history failure restores the attachment pointer' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_mime, get_post_mime_type( 79 ), 'restore history failure restores the attachment MIME' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_metadata, wp_get_attachment_metadata( 79 ), 'restore history failure restores attachment metadata' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_content, (string) $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][83]->post_content, 'restore history failure restores affected post content' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_history, get_post_meta( 79, '_npcink_ai_media_file_replacement_history', true ), 'restore history failure preserves replacement history' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_latest, get_post_meta( 79, '_npcink_ai_media_latest_file_replacement', true ), 'restore history failure preserves latest replacement projection' );
+npcink_abilities_toolkit_assert_same( 'preexisting-target-bytes', file_get_contents( $media_restore_target_path ), 'restore history failure restores overwritten target bytes' );
+
+$media_restore_source_backup_relative = '';
+foreach ( $media_restore_original_history as $media_restore_history_record ) {
+	if ( 'media_replace_unit' === (string) ( $media_restore_history_record['replacement_id'] ?? '' ) ) {
+		$media_restore_source_backup_relative = (string) ( $media_restore_history_record['backup']['relative_file'] ?? '' );
+		break;
+	}
+}
+$media_restore_source_backup_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/' . $media_restore_source_backup_relative;
+$media_restore_source_backup_bytes = file_get_contents( $media_restore_source_backup_path );
+$restore_backup_drift_injected = false;
+add_filter(
+	'npcink_abilities_toolkit_media_file_copy_blocked',
+	static function ( $blocked, $source_path, $target_path, $context ) use ( &$restore_backup_drift_injected, $media_restore_source_backup_path ) {
+		unset( $source_path, $target_path );
+		if ( ! $restore_backup_drift_injected && is_array( $context ) && 'restore_media_backup' === (string) ( $context['operation'] ?? '' ) && 'backup_current' === (string) ( $context['step'] ?? '' ) ) {
+			$restore_backup_drift_injected = true;
+			file_put_contents( $media_restore_source_backup_path, 'concurrent-backup-drift' );
+		}
+		return $blocked;
+	},
+	10,
+	4
+);
+$GLOBALS['npcink_ai_runtime_wp_ability_context']['context'] = array(
+	'approval_commit_authorized' => true,
+	'approval_id'                => 'approval-media-restore-backup-drift',
+);
+$media_restore_backup_drift = $core_write_package->restore_media_backup(
+	array(
+		'attachment_id'                  => 79,
+		'backup_id'                      => 'media_replace_unit',
+		'expected_current_relative_file' => $media_restore_original_pointer,
+		'target_conflict_mode'           => 'overwrite',
+		'commit'                         => true,
+	)
+);
+remove_all_filters( 'npcink_abilities_toolkit_media_file_copy_blocked' );
+unset( $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
+npcink_abilities_toolkit_assert_true( is_wp_error( $media_restore_backup_drift ) && 'npcink_abilities_toolkit_media_restore_precommit_drift' === $media_restore_backup_drift->get_error_code(), 'restore-media-backup blocks source backup drift at the late precommit gate' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_pointer, get_post_meta( 79, '_wp_attached_file', true ), 'source backup drift leaves the attachment pointer unchanged' );
+npcink_abilities_toolkit_assert_same( 'preexisting-target-bytes', file_get_contents( $media_restore_target_path ), 'source backup drift leaves target bytes unchanged' );
+file_put_contents( $media_restore_source_backup_path, $media_restore_source_backup_bytes );
+
+$restore_target_drift_injected = false;
+add_filter(
+	'npcink_abilities_toolkit_media_file_copy_blocked',
+	static function ( $blocked, $source_path, $target_path, $context ) use ( &$restore_target_drift_injected, $media_restore_target_path ) {
+		unset( $source_path, $target_path );
+		if ( ! $restore_target_drift_injected && is_array( $context ) && 'restore_media_backup' === (string) ( $context['operation'] ?? '' ) && 'backup_restore_target' === (string) ( $context['step'] ?? '' ) ) {
+			$restore_target_drift_injected = true;
+			file_put_contents( $media_restore_target_path, 'concurrent-target-winner' );
+		}
+		return $blocked;
+	},
+	10,
+	4
+);
+$GLOBALS['npcink_ai_runtime_wp_ability_context']['context'] = array(
+	'approval_commit_authorized' => true,
+	'approval_id'                => 'approval-media-restore-target-drift',
+);
+$media_restore_target_drift = $core_write_package->restore_media_backup(
+	array(
+		'attachment_id'                  => 79,
+		'backup_id'                      => 'media_replace_unit',
+		'expected_current_relative_file' => $media_restore_original_pointer,
+		'target_conflict_mode'           => 'overwrite',
+		'commit'                         => true,
+	)
+);
+remove_all_filters( 'npcink_abilities_toolkit_media_file_copy_blocked' );
+unset( $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
+npcink_abilities_toolkit_assert_true( is_wp_error( $media_restore_target_drift ) && 'npcink_abilities_toolkit_media_restore_precommit_drift' === $media_restore_target_drift->get_error_code(), 'restore-media-backup blocks target drift during compensation copy' );
+npcink_abilities_toolkit_assert_same( $media_restore_original_pointer, get_post_meta( 79, '_wp_attached_file', true ), 'target drift during compensation copy leaves the attachment pointer unchanged' );
+npcink_abilities_toolkit_assert_same( 'concurrent-target-winner', file_get_contents( $media_restore_target_path ), 'target drift during compensation copy preserves the concurrent winner bytes' );
+file_put_contents( $media_restore_target_path, 'preexisting-target-bytes' );
+
+$restore_compensation_pattern = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/2026/06/*npcink-abilities-toolkit-restore-compensation*';
+$restore_compensation_before = glob( $restore_compensation_pattern );
+$GLOBALS['npcink_ai_runtime_wp_ability_context']['context'] = array(
+	'approval_commit_authorized' => true,
+	'approval_id'                => 'approval-media-restore-success',
+);
+$media_restore_success = $core_write_package->restore_media_backup(
+	array(
+		'attachment_id'                  => 79,
+		'backup_id'                      => 'media_replace_unit',
+		'expected_current_relative_file' => $media_restore_original_pointer,
+		'target_conflict_mode'           => 'overwrite',
+		'commit'                         => true,
+	)
+);
+unset( $GLOBALS['npcink_ai_runtime_wp_ability_context'] );
+$media_restore_success_history = get_post_meta( 79, '_npcink_ai_media_file_replacement_history', true );
+$media_restore_success_original = array_values( array_filter( $media_restore_success_history, static function ( $record ) { return 'media_replace_unit' === (string) ( $record['replacement_id'] ?? '' ); } ) );
+$media_restore_success_latest = get_post_meta( 79, '_npcink_ai_media_latest_file_replacement', true );
+$media_restore_current_backup_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/' . (string) ( $media_restore_success['current_backup']['relative_file'] ?? '' );
+npcink_abilities_toolkit_assert_same( true, $media_restore_success['restored'] ?? null, 'restore-media-backup success reports restored=true' );
+npcink_abilities_toolkit_assert_same( true, $media_restore_success['rolled_back'] ?? null, 'restore-media-backup success reports rolled_back=true' );
+npcink_abilities_toolkit_assert_same( '2026/06/workflow-diagram-image.jpg', get_post_meta( 79, '_wp_attached_file', true ), 'restore-media-backup success switches to the original attachment pointer' );
+npcink_abilities_toolkit_assert_same( $media_restore_source_backup_bytes, file_get_contents( $media_restore_target_path ), 'restore-media-backup success restores the selected backup bytes' );
+npcink_abilities_toolkit_assert_true( is_file( $media_restore_current_backup_path ), 'restore-media-backup success retains the new rollback backup' );
+npcink_abilities_toolkit_assert_same( 'rolled_back', $media_restore_success_original[0]['status'] ?? '', 'restore-media-backup success marks the selected replacement rolled back' );
+npcink_abilities_toolkit_assert_same( 'active', $media_restore_success_latest['status'] ?? '', 'restore-media-backup success records an active restore history projection' );
+npcink_abilities_toolkit_assert_same( 'media_replace_unit', $media_restore_success_latest['restored_from'] ?? '', 'restore-media-backup success links the restore record to its selected backup' );
+npcink_abilities_toolkit_assert_same( $restore_compensation_before, glob( $restore_compensation_pattern ), 'restore-media-backup success removes its transient overwrite compensation file' );
+
 update_post_meta( 79, '_wp_attached_file', '2026/06/workflow-diagram-image.jpg' );
 $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][79]->post_mime_type = 'image/jpeg';
 update_post_meta(
