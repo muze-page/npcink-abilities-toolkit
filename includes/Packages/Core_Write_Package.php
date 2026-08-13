@@ -2647,13 +2647,42 @@ final class Core_Write_Package {
 		if ( is_wp_error( $allowed ) ) {
 			return $allowed;
 		}
+		$rollback_state = $this->capture_cloud_media_adoption_state(
+			$attachment_id,
+			is_array( $payload['content_reference_repairs'] ?? null ) ? $payload['content_reference_repairs'] : array(),
+			$plan
+		);
+		$batch_manifest = (object) array(
+			'created_files'    => array(),
+			'mutations'        => array(),
+			'overwritten_files' => array(),
+			'rollback_state'   => $rollback_state,
+		);
+		$plan['_cloud_batch_manifest'] = $batch_manifest;
+		$precommit = $this->validate_media_backup_restore_precommit_state(
+			$attachment_id,
+			$plan,
+			is_array( $payload['content_reference_repairs'] ?? null ) ? $payload['content_reference_repairs'] : array(),
+			$rollback_state
+		);
+		if ( is_wp_error( $precommit ) ) {
+			return $precommit;
+		}
+		$plan['_current'] = is_array( $precommit['current'] ?? null ) ? $precommit['current'] : array();
+		$plan['before'] = $this->public_media_file_state( $plan['_current'] );
+		$rollback_state = is_array( $precommit['rollback_state'] ?? null ) ? $precommit['rollback_state'] : $rollback_state;
+		$batch_manifest->rollback_state = $rollback_state;
+		$payload['before'] = $plan['before'];
+		$payload['content_reference_repairs'] = is_array( $precommit['content_reference_repairs'] ?? null ) ? $precommit['content_reference_repairs'] : array();
+		$plan['_restore_precommit_repairs'] = $payload['content_reference_repairs'];
+		$plan['_restore_precommit_state'] = $rollback_state;
 
 		$result = $this->execute_media_backup_restore( $attachment_id, $plan );
 		if ( is_wp_error( $result ) ) {
-			return $result;
+			return $this->media_backup_restore_failure_with_cleanup( $result, $attachment_id, $plan, $rollback_state );
 		}
 
-		$payload['restored'] = ! empty( $result['rolled_back'] );
+		$payload['restored'] = ! empty( $result['restored'] );
 		$payload['rolled_back'] = ! empty( $result['rolled_back'] );
 		$payload['after'] = is_array( $result['after'] ?? null ) ? $result['after'] : $payload['after'];
 		$payload['backup'] = is_array( $result['backup'] ?? null ) ? $result['backup'] : $payload['backup'];
@@ -4732,6 +4761,43 @@ final class Core_Write_Package {
 	}
 
 	/**
+	 * Reuses the exact attachment/reference drift gate for a local backup restore.
+	 *
+	 * @param int                 $attachment_id Attachment id.
+	 * @param array<string,mixed> $plan Restore plan.
+	 * @param array<string,mixed> $reviewed_repairs Reviewed reference repairs.
+	 * @param array<string,mixed> $rollback_state Captured local state.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	private function validate_media_backup_restore_precommit_state( $attachment_id, array $plan, array $reviewed_repairs, array $rollback_state ) {
+		$result = $this->validate_cloud_media_adoption_precommit_state( $attachment_id, $plan, $reviewed_repairs, $rollback_state );
+		$drift_fields = array();
+		if ( is_wp_error( $result ) ) {
+			$data = $result->get_error_data();
+			$drift_fields = (array) ( is_array( $data ) ? ( $data['drift_fields'] ?? array() ) : array() );
+		}
+		if ( ( $plan['_backup_file_snapshot'] ?? null ) !== $this->cloud_media_current_file_snapshot( (string) ( $plan['_backup_path'] ?? '' ) ) ) {
+			$drift_fields[] = 'backup_file';
+		}
+		if ( ( $plan['_target_file_snapshot'] ?? null ) !== $this->cloud_media_current_file_snapshot( (string) ( $plan['_target_path'] ?? '' ) ) ) {
+			$drift_fields[] = 'restore_target_file';
+		}
+		$drift_fields = array_values( array_unique( $drift_fields ) );
+		if ( empty( $drift_fields ) && ! is_wp_error( $result ) ) {
+			return $result;
+		}
+		return new \WP_Error(
+			'npcink_abilities_toolkit_media_restore_precommit_drift',
+			__( 'The attachment or its reviewed content references changed before the media backup restore could commit.', 'npcink-abilities-toolkit' ),
+			array(
+				'status'       => 409,
+				'drift_fields' => $drift_fields,
+				'cause'        => is_wp_error( $result ) ? $result->get_error_code() : '',
+			)
+		);
+	}
+
+	/**
 	 * Builds a strict, serialization-safe projection of current attachment state.
 	 *
 	 * @param array<string,mixed> $current Current state.
@@ -4768,6 +4834,21 @@ final class Core_Write_Package {
 			'filesize_bytes' => '' !== $path && is_readable( $path ) ? absint( filesize( $path ) ) : 0,
 			'sha256'         => is_string( $sha256 ) ? $sha256 : '',
 		);
+	}
+
+	/**
+	 * Compares file bytes while allowing the snapshots to describe different paths.
+	 *
+	 * @param array<string,mixed> $expected Expected file snapshot.
+	 * @param array<string,mixed> $actual Actual file snapshot.
+	 * @return bool
+	 */
+	private function cloud_media_file_bytes_match( array $expected, array $actual ) {
+		return ! empty( $expected['readable'] )
+			&& ! empty( $actual['readable'] )
+			&& absint( $expected['filesize_bytes'] ?? 0 ) === absint( $actual['filesize_bytes'] ?? 0 )
+			&& '' !== (string) ( $expected['sha256'] ?? '' )
+			&& (string) ( $expected['sha256'] ?? '' ) === (string) ( $actual['sha256'] ?? '' );
 	}
 
 	/**
@@ -4933,6 +5014,18 @@ final class Core_Write_Package {
 		}
 
 		$batch_manifest = $plan['_cloud_batch_manifest'] ?? null;
+		if ( empty( $conflicts ) && is_object( $batch_manifest ) ) {
+			$overwritten_cleanup = $this->restore_media_backup_overwritten_files( $batch_manifest );
+			if ( is_wp_error( $overwritten_cleanup ) ) {
+				$overwritten_data = $overwritten_cleanup->get_error_data();
+				foreach ( (array) ( is_array( $overwritten_data ) ? ( $overwritten_data['conflicts'] ?? array() ) : array() ) as $conflict ) {
+					$conflicts[] = 'file:' . $this->sanitize_media_file_name( (string) $conflict );
+				}
+				foreach ( (array) ( is_array( $overwritten_data ) ? ( $overwritten_data['failures'] ?? array() ) : array() ) as $failure ) {
+					$failures[] = 'file:' . $this->sanitize_media_file_name( (string) $failure );
+				}
+			}
+		}
 		if ( ! empty( $conflicts ) ) {
 			// A concurrent WordPress value may reference any batch file. Preserve the
 			// complete bounded manifest for diagnosis instead of risking a broken URL.
@@ -4970,6 +5063,58 @@ final class Core_Write_Package {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Restores files that a local media restore overwrote before a later failure.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private function restore_media_backup_overwritten_files( $manifest ) {
+		$overwritten = is_object( $manifest ) && isset( $manifest->overwritten_files ) && is_array( $manifest->overwritten_files ) ? array_reverse( $manifest->overwritten_files ) : array();
+		$failures = array();
+		$conflicts = array();
+		foreach ( $overwritten as $entry ) {
+			$entry = is_array( $entry ) ? $entry : array();
+			$target_path = (string) ( $entry['target_path'] ?? '' );
+			$compensation_path = (string) ( $entry['compensation_path'] ?? '' );
+			$after = is_array( $entry['after'] ?? null ) ? $entry['after'] : array();
+			if ( empty( $after ) || $after !== $this->cloud_media_current_file_snapshot( $target_path ) ) {
+				$conflicts[] = basename( $target_path );
+				continue;
+			}
+			if ( ! is_readable( $compensation_path ) || ! $this->copy_media_file( $compensation_path, $target_path, array( 'operation' => 'restore_media_backup', 'step' => 'compensate_restore_target' ) ) ) {
+				$failures[] = basename( $target_path );
+				continue;
+			}
+			$before = is_array( $entry['before'] ?? null ) ? $entry['before'] : array();
+			if ( $before !== $this->cloud_media_current_file_snapshot( $target_path ) ) {
+				$failures[] = basename( $target_path );
+			}
+		}
+		if ( ! empty( $conflicts ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_cloud_adoption_cleanup_conflict', __( 'Concurrent filesystem state prevented media restore compensation.', 'npcink-abilities-toolkit' ), array( 'status' => 409, 'conflicts' => $conflicts ) );
+		}
+		if ( ! empty( $failures ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_cloud_adoption_cleanup_failed', __( 'The failed media restore could not restore every overwritten file.', 'npcink-abilities-toolkit' ), array( 'status' => 500, 'failures' => $failures ) );
+		}
+		return true;
+	}
+
+	/**
+	 * Preserves a restore failure when state and file compensation succeed.
+	 *
+	 * @return \WP_Error
+	 */
+	private function media_backup_restore_failure_with_cleanup( \WP_Error $cause, $attachment_id, array $plan, array $rollback_state ) {
+		if ( 'npcink_abilities_toolkit_media_restore_precommit_drift' === $cause->get_error_code() ) {
+			return $this->cloud_media_adoption_precommit_failure_with_discard(
+				$cause,
+				$plan['_cloud_batch_manifest'] ?? null,
+				$attachment_id
+			);
+		}
+		return $this->cloud_media_adoption_failure_with_cleanup( $cause, $attachment_id, $plan, array(), $rollback_state );
 	}
 
 	/**
@@ -5386,8 +5531,10 @@ final class Core_Write_Package {
 				'_history'       => $history,
 				'_backup_relative_file' => $backup_relative,
 				'_backup_path'   => $backup_path,
+				'_backup_file_snapshot' => $this->cloud_media_current_file_snapshot( $backup_path ),
 				'_target_relative_file' => $target_relative,
 				'_target_path'   => $target_path,
+				'_target_file_snapshot' => $this->cloud_media_current_file_snapshot( $target_path ),
 				'_current_backup_relative_file' => $current_backup_relative,
 			);
 		}
@@ -5602,7 +5749,7 @@ final class Core_Write_Package {
 		 * @param array<string,mixed> $plan Restore plan.
 		 * @return array<string,mixed>|\WP_Error
 		 */
-		private function execute_media_backup_restore( $attachment_id, array $plan ) {
+	private function execute_media_backup_restore( $attachment_id, array $plan ) {
 			$attachment_id = absint( $attachment_id );
 			$current = is_array( $plan['_current'] ?? null ) ? $plan['_current'] : array();
 			$storage_ready = $this->validate_media_storage_commit_ready( $current );
@@ -5615,6 +5762,7 @@ final class Core_Write_Package {
 			$target_path = (string) ( $plan['_target_path'] ?? '' );
 			$current_backup_relative = $this->normalize_media_relative_file( (string) ( $plan['_current_backup_relative_file'] ?? '' ) );
 			$current_backup_path = $this->media_uploads_path_for_relative_file( $current_backup_relative );
+			$batch_manifest = $plan['_cloud_batch_manifest'] ?? null;
 			$content_reference_repairs = $this->build_media_content_reference_repairs( $attachment_id, $plan, false );
 			$permission_error = $this->validate_media_content_reference_repair_permissions( $content_reference_repairs );
 			if ( is_wp_error( $permission_error ) ) {
@@ -5632,53 +5780,53 @@ final class Core_Write_Package {
 			if ( file_exists( $target_path ) && 'overwrite' !== (string) ( $plan['conflict_mode'] ?? 'fail' ) && md5_file( $target_path ) !== md5_file( $backup_path ) ) {
 				return new \WP_Error( 'npcink_abilities_toolkit_restore_target_exists', __( 'The original media file path already exists with different content.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 			}
-			if (
-				'' === $current_backup_path ||
-				! $this->ensure_media_directory( dirname( $current_backup_path ) ) ||
-				! $this->copy_media_file(
-					$current_path,
-					$current_backup_path,
-					array(
-						'operation'     => 'restore_media_backup',
-						'step'          => 'backup_current',
-						'attachment_id' => $attachment_id,
-						'relative_file' => $current_backup_relative,
-					)
-				)
-			) {
-				return new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment file could not be backed up before restore.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
+			$current_backup_context = array(
+				'operation'     => 'restore_media_backup',
+				'step'          => 'backup_current',
+				'attachment_id' => $attachment_id,
+				'relative_file' => $current_backup_relative,
+			);
+			$current_backup_created = '' !== $current_backup_path && $this->ensure_media_directory( dirname( $current_backup_path ) )
+				? $this->copy_cloud_media_file_exclusive( $current_path, $current_backup_path, $current_backup_context )
+				: new \WP_Error( 'npcink_abilities_toolkit_media_backup_failed', __( 'The current attachment file could not be backed up before restore.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
+			if ( is_wp_error( $current_backup_created ) ) {
+				return $current_backup_created;
 			}
-			if (
-				! $this->ensure_media_directory( dirname( $target_path ) ) ||
-				! $this->copy_media_file(
-					$backup_path,
-					$target_path,
-					array(
-						'operation'     => 'restore_media_backup',
-						'step'          => 'restore_backup',
-						'attachment_id' => $attachment_id,
-						'relative_file' => $target_relative,
-					)
-				)
-			) {
-				return new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The backup file could not be restored to the original path.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
+			$this->add_cloud_media_created_file_to_manifest( $batch_manifest, $current_backup_created );
+
+			$late_precommit = $this->validate_media_backup_restore_precommit_state(
+				$attachment_id,
+				$plan,
+				is_array( $plan['_restore_precommit_repairs'] ?? null ) ? $plan['_restore_precommit_repairs'] : array(),
+				is_array( $plan['_restore_precommit_state'] ?? null ) ? $plan['_restore_precommit_state'] : array()
+			);
+			if ( is_wp_error( $late_precommit ) ) {
+				return $late_precommit;
+			}
+			$current = is_array( $late_precommit['current'] ?? null ) ? $late_precommit['current'] : $current;
+			$current_path = (string) ( $current['file_path'] ?? $current_path );
+			$content_reference_repairs = is_array( $late_precommit['content_reference_repairs'] ?? null ) ? $late_precommit['content_reference_repairs'] : $content_reference_repairs;
+
+			$target_copy = $this->copy_media_backup_restore_target( $backup_path, $target_path, $target_relative, $attachment_id, $plan, $batch_manifest );
+			if ( is_wp_error( $target_copy ) ) {
+				return $target_copy;
 			}
 
 			$after = is_array( $plan['after'] ?? null ) ? $plan['after'] : array();
 			$after['filesize_bytes'] = absint( filesize( $target_path ) );
 			$current_backup = is_array( $plan['current_backup'] ?? null ) ? $plan['current_backup'] : array();
 			$current_backup['filesize_bytes'] = absint( filesize( $current_backup_path ) );
-			$updated = $this->update_media_file_pointer( $attachment_id, $target_relative, (string) ( $after['mime_type'] ?? '' ), $after );
+			$updated = $this->update_media_file_pointer( $attachment_id, $target_relative, (string) ( $after['mime_type'] ?? '' ), $after, $batch_manifest );
 			if ( is_wp_error( $updated ) ) {
 				return $updated;
 			}
-			$content_reference_repairs = $this->apply_media_content_reference_repairs( $content_reference_repairs );
+			$content_reference_repairs = $this->apply_media_content_reference_repairs( $content_reference_repairs, $batch_manifest );
 			if ( is_wp_error( $content_reference_repairs ) ) {
 				return $content_reference_repairs;
 			}
-			$this->mark_media_file_replacement_rolled_back( $attachment_id, (string) ( $plan['replacement_id'] ?? '' ) );
-			$this->append_media_file_replacement_history(
+			$history_updated = $this->record_media_backup_restore_history(
 				$attachment_id,
+				(string) ( $plan['replacement_id'] ?? '' ),
 				array(
 					'replacement_id'     => (string) ( $plan['restore_id'] ?? '' ),
 					'operation'          => 'restore_media_backup',
@@ -5689,8 +5837,16 @@ final class Core_Write_Package {
 					'before'             => is_array( $plan['before'] ?? null ) ? $plan['before'] : array(),
 					'after'              => $after,
 					'backup'             => $current_backup,
-				)
+				),
+				$batch_manifest
 			);
+			if ( is_wp_error( $history_updated ) ) {
+				return $history_updated;
+			}
+			$finalized = $this->finalize_media_backup_restore_files( $batch_manifest );
+			if ( is_wp_error( $finalized ) ) {
+				return $finalized;
+			}
 
 			return array(
 				'restored'       => true,
@@ -5701,6 +5857,163 @@ final class Core_Write_Package {
 				'content_reference_repairs' => $content_reference_repairs,
 			);
 		}
+
+	/**
+	 * Copies a selected backup to the restore target and records file compensation.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private function copy_media_backup_restore_target( $backup_path, $target_path, $target_relative, $attachment_id, array $plan, $batch_manifest ) {
+		$backup_path = (string) $backup_path;
+		$target_path = (string) $target_path;
+		$target_relative = $this->normalize_media_relative_file( $target_relative );
+		$attachment_id = absint( $attachment_id );
+		if ( '' === $target_path || ! $this->ensure_media_directory( dirname( $target_path ) ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The backup file could not be restored to the original path.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
+		}
+		$context = array(
+			'operation'     => 'restore_media_backup',
+			'step'          => 'restore_backup',
+			'attachment_id' => $attachment_id,
+			'relative_file' => $target_relative,
+		);
+		$expected_backup = is_array( $plan['_backup_file_snapshot'] ?? null ) ? $plan['_backup_file_snapshot'] : array();
+		$expected_target = is_array( $plan['_target_file_snapshot'] ?? null ) ? $plan['_target_file_snapshot'] : array();
+		$drift_fields = array();
+		if ( $expected_backup !== $this->cloud_media_current_file_snapshot( $backup_path ) ) {
+			$drift_fields[] = 'backup_file';
+		}
+		if ( $expected_target !== $this->cloud_media_current_file_snapshot( $target_path ) ) {
+			$drift_fields[] = 'restore_target_file';
+		}
+		if ( ! empty( $drift_fields ) ) {
+			return new \WP_Error(
+				'npcink_abilities_toolkit_media_restore_precommit_drift',
+				__( 'The selected backup or restore target changed before the restore copy began.', 'npcink-abilities-toolkit' ),
+				array( 'status' => 409, 'drift_fields' => $drift_fields )
+			);
+		}
+		if ( ! file_exists( $target_path ) ) {
+			$created = $this->copy_cloud_media_file_exclusive( $backup_path, $target_path, $context );
+			if ( is_wp_error( $created ) ) {
+				return new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The backup file could not be restored to the original path.', 'npcink-abilities-toolkit' ), array( 'status' => 500, 'cause' => $created->get_error_code() ) );
+			}
+			$this->add_cloud_media_created_file_to_manifest( $batch_manifest, $created );
+			if ( ! $this->cloud_media_file_bytes_match( $expected_backup, $this->cloud_media_current_file_snapshot( $target_path ) ) ) {
+				return new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The restored file did not match the reviewed backup bytes.', 'npcink-abilities-toolkit' ), array( 'status' => 409, 'cause' => 'backup_file_drift' ) );
+			}
+			return true;
+		}
+
+		$compensation_relative = $this->backup_relative_file_for_current_media(
+			array( 'relative_file' => $target_relative ),
+			(string) ( $plan['restore_id'] ?? '' ) . '-target',
+			'npcink-abilities-toolkit-restore-compensation'
+		);
+		$compensation_path = $this->media_uploads_path_for_relative_file( $compensation_relative );
+		$compensation = '' !== $compensation_path && $this->ensure_media_directory( dirname( $compensation_path ) )
+			? $this->copy_cloud_media_file_exclusive( $target_path, $compensation_path, array_merge( $context, array( 'step' => 'backup_restore_target', 'relative_file' => $compensation_relative ) ) )
+			: new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The existing restore target could not be preserved for compensation.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
+		if ( is_wp_error( $compensation ) ) {
+			return $compensation;
+		}
+		$this->add_cloud_media_created_file_to_manifest( $batch_manifest, $compensation );
+		if (
+			$expected_target !== $this->cloud_media_current_file_snapshot( $target_path )
+			|| ! $this->cloud_media_file_bytes_match( $expected_target, $this->cloud_media_current_file_snapshot( $compensation_path ) )
+		) {
+			return new \WP_Error(
+				'npcink_abilities_toolkit_media_restore_precommit_drift',
+				__( 'The restore target changed while its compensation copy was being created.', 'npcink-abilities-toolkit' ),
+				array( 'status' => 409, 'drift_fields' => array( 'restore_target_file' ) )
+			);
+		}
+		$overwritten = is_object( $batch_manifest ) && isset( $batch_manifest->overwritten_files ) && is_array( $batch_manifest->overwritten_files ) ? $batch_manifest->overwritten_files : array();
+		$overwritten_entry = array(
+			'target_path'       => $target_path,
+			'compensation_path' => $compensation_path,
+			'before'            => $expected_target,
+		);
+		$copied = $this->copy_media_file( $backup_path, $target_path, $context );
+		$overwritten_entry['after'] = $this->cloud_media_current_file_snapshot( $target_path );
+		if ( $overwritten_entry['after'] !== $expected_target ) {
+			$overwritten[] = $overwritten_entry;
+			$batch_manifest->overwritten_files = $overwritten;
+		}
+		if ( ! $copied ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The backup file could not be restored to the original path.', 'npcink-abilities-toolkit' ), array( 'status' => 500 ) );
+		}
+		if ( ! $this->cloud_media_file_bytes_match( $expected_backup, $overwritten_entry['after'] ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_media_restore_failed', __( 'The restored file did not match the reviewed backup bytes.', 'npcink-abilities-toolkit' ), array( 'status' => 409, 'cause' => 'backup_file_drift' ) );
+		}
+		return true;
+	}
+
+	/**
+	 * Marks the selected replacement rolled back and appends the new restore record.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private function record_media_backup_restore_history( $attachment_id, $replacement_id, array $record, $batch_manifest ) {
+		$attachment_id = absint( $attachment_id );
+		$replacement_id = sanitize_text_field( (string) $replacement_id );
+		$history = $this->get_media_file_replacement_history( $attachment_id );
+		$matched = false;
+		foreach ( $history as &$existing ) {
+			if ( $replacement_id === (string) ( $existing['replacement_id'] ?? '' ) ) {
+				$existing['status'] = 'rolled_back';
+				$existing['rolled_back_at_gmt'] = gmdate( 'c' );
+				$matched = true;
+			}
+		}
+		unset( $existing );
+		if ( ! $matched ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_replacement_not_found', __( 'Replacement history was not found for restore.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
+		}
+		$history[] = $record;
+		$history = array_slice( $history, -20 );
+		$history_updated = $this->cloud_media_cas_update_post_meta( $batch_manifest, $attachment_id, '_npcink_ai_media_file_replacement_history', $history );
+		if ( is_wp_error( $history_updated ) ) {
+			return $history_updated;
+		}
+		return $this->cloud_media_cas_update_post_meta( $batch_manifest, $attachment_id, '_npcink_ai_media_latest_file_replacement', $record );
+	}
+
+	/**
+	 * Removes transient compensation copies after every restore mutation succeeds.
+	 *
+	 * The new rollback backup and a newly created restore target remain durable.
+	 *
+	 * @return true|\WP_Error
+	 */
+	private function finalize_media_backup_restore_files( $manifest ) {
+		if ( ! is_object( $manifest ) ) {
+			return true;
+		}
+		$overwritten = isset( $manifest->overwritten_files ) && is_array( $manifest->overwritten_files ) ? $manifest->overwritten_files : array();
+		$compensation_paths = array();
+		foreach ( $overwritten as $entry ) {
+			$path = (string) ( is_array( $entry ) ? ( $entry['compensation_path'] ?? '' ) : '' );
+			if ( '' !== $path ) {
+				$compensation_paths[ $path ] = true;
+			}
+		}
+		$created_files = isset( $manifest->created_files ) && is_array( $manifest->created_files ) ? $manifest->created_files : array();
+		$remaining = array();
+		foreach ( $created_files as $created_file ) {
+			$path = (string) ( is_array( $created_file ) ? ( $created_file['path'] ?? '' ) : '' );
+			if ( ! isset( $compensation_paths[ $path ] ) ) {
+				$remaining[] = $created_file;
+				continue;
+			}
+			if ( ! is_array( $created_file ) || ! $this->discard_cloud_media_created_file( $created_file ) ) {
+				return new \WP_Error( 'npcink_abilities_toolkit_media_restore_finalize_failed', __( 'The completed media restore could not remove its transient compensation file.', 'npcink-abilities-toolkit' ), array( 'status' => 500, 'file' => basename( $path ) ) );
+			}
+		}
+		$manifest->created_files = $remaining;
+		$manifest->overwritten_files = array();
+		return true;
+	}
 
 	/**
 	 * Returns current attachment file state with internal path for commit checks.

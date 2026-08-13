@@ -166,7 +166,20 @@ contracts:
   attachment before any restore proposal is prepared.
 - `npcink-abilities-toolkit/restore-media-backup`: host-approved restore path that copies a
   recorded backup back to the original attachment path, restoring the original
-  public media URL.
+  public media URL. Commit uses two optimistic-concurrency gates: one before
+  creating the current-file rollback backup and one immediately after that
+  exclusive backup copy. Both gates recheck attachment, metadata, MIME,
+  storage, reviewed post references, the selected backup bytes, and the restore
+  target bytes. The WordPress pointer, metadata, MIME, content repairs, and
+  history/latest projections then commit through one bounded CAS mutation
+  manifest. When overwrite is explicitly approved, Toolkit first creates an
+  exclusive transient copy of the existing target; any later failure restores
+  those exact bytes only while the target still matches this batch's after
+  snapshot. Successful restore retains the new current-file rollback backup,
+  marks the selected history record rolled back, appends the active restore
+  record, and removes only its transient overwrite compensation copy. Failed
+  restore compensates every completed WordPress and filesystem mutation; a
+  concurrent winner produces a bounded conflict instead of being overwritten.
 - `npcink-abilities-toolkit/adopt-cloud-media-derivative`: approved local adoption path for a
   non-expired Cloud derivative artifact. Require artifact evidence, backup,
   rollback metadata, host approval before commit, and synchronized
