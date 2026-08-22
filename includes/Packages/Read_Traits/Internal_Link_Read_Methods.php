@@ -33,6 +33,7 @@ trait Internal_Link_Read_Methods {
 		$user_instruction = $this->normalize_plain_text( $input['user_instruction'] ?? '' );
 		$focus_keyword = sanitize_text_field( (string) ( $input['focus_keyword'] ?? '' ) );
 		$keywords = is_array( $input['keywords'] ?? null ) ? $input['keywords'] : array();
+		$content_blocks = $this->normalize_internal_link_content_blocks( $input['content_blocks'] ?? array() );
 		$terms = $this->collect_focus_terms( $title, $focus_keyword, array_merge( $keywords, array( $query_text, $selected_text, $excerpt, $user_instruction ) ) );
 		$max_targets = max( 1, min( 6, $this->absint_value( $input['max_targets'] ?? 3 ) ) );
 		$candidate_limit = max( 1, min( 8, $this->absint_value( $input['candidate_limit'] ?? $max_targets ) ) );
@@ -77,7 +78,11 @@ trait Internal_Link_Read_Methods {
 		foreach ( $this->normalize_supplied_internal_link_evidence( $input['related_content_evidence'] ?? array(), $current_post_id ) as $evidence_item ) {
 			$post_id = $this->absint_value( $evidence_item['post_id'] ?? 0 );
 			$key = 0 < $post_id ? $post_id : 'url:' . (string) ( $evidence_item['url'] ?? '' );
-			if ( '' === (string) $key || isset( $targets[ $key ] ) ) {
+			if ( '' === (string) $key ) {
+				continue;
+			}
+			if ( isset( $targets[ $key ] ) ) {
+				$targets[ $key ] = array_merge( $targets[ $key ], $evidence_item );
 				continue;
 			}
 
@@ -86,6 +91,12 @@ trait Internal_Link_Read_Methods {
 				break;
 			}
 		}
+		uasort(
+			$targets,
+			static function ( array $left, array $right ): int {
+				return (float) ( $right['priority_score'] ?? $right['relevance_score'] ?? 0 ) <=> (float) ( $left['priority_score'] ?? $left['relevance_score'] ?? 0 );
+			}
+		);
 
 		$placement_plan = array();
 		$candidate_items = array();
@@ -100,6 +111,12 @@ trait Internal_Link_Read_Methods {
 			}
 			$target_url = esc_url_raw( (string) ( $target['url'] ?? '' ) );
 			$target_post_id = $this->absint_value( $target['post_id'] ?? 0 );
+			$link_graph_issues = is_array( $target['link_graph_issues'] ?? null ) ? $target['link_graph_issues'] : array();
+			$shared_terms = is_array( $target['shared_terms'] ?? null ) ? $target['shared_terms'] : array();
+			$source_match = $this->internal_link_source_match( $content_blocks, $selected_text, $anchor_text, (string) ( $target['title'] ?? '' ) );
+			if ( ! empty( $source_match['matched_text'] ) ) {
+				$anchor_text = (string) $source_match['matched_text'];
+			}
 
 			$placement_plan[] = array(
 				'target_post_id' => $target_post_id,
@@ -116,8 +133,15 @@ trait Internal_Link_Read_Methods {
 				'suggested_anchor_text' => $anchor_text,
 				'placement_hint'        => __( 'Review near the paragraph where this topic is mentioned; the ability does not insert the link.', 'npcink-abilities-toolkit' ),
 				'reason'                => $reason,
+				'priority_reason'       => in_array( 'orphan_post', $link_graph_issues, true )
+					? __( 'Prioritized because the related target currently has no detected incoming internal links.', 'npcink-abilities-toolkit' )
+					: ( ! empty( $shared_terms ) ? __( 'Prioritized because the current and target articles share topic terms.', 'npcink-abilities-toolkit' ) : '' ),
+				'link_graph_issues'     => $link_graph_issues,
+				'shared_terms'          => $shared_terms,
+				'incoming_count'        => $this->absint_value( $target['incoming_count'] ?? 0 ),
 				'evidence_refs'         => is_array( $target['evidence_refs'] ?? null ) ? array_values( array_map( 'sanitize_text_field', $target['evidence_refs'] ) ) : array( 'internal_link_candidate:' . ( $index + 1 ) ),
 				'score'                 => is_numeric( $target['relevance_score'] ?? null ) ? (float) $target['relevance_score'] : null,
+				'source_match'          => $source_match,
 				'source'                => sanitize_key( (string) ( $target['source'] ?? 'local_internal_link_inventory' ) ),
 				'status'                => 'review_only_candidate',
 			);
@@ -134,21 +158,22 @@ trait Internal_Link_Read_Methods {
 					'candidate_type'         => 'internal_link_candidates',
 					'candidate_contract'     => 'recommendation_candidate.v1',
 					'write_posture'          => 'suggestion_only',
-					'final_write_path'       => 'operator_review_only_no_insert',
+					'final_write_path'       => 'native_editor_commit',
 					'direct_wordpress_write' => false,
 					'source_ability_id'      => 'npcink-abilities-toolkit/resolve-internal-link-targets',
 					'items'                  => $candidate_items,
 					'review_policy'          => array(
 						'link_insertion_owner'       => 'human_editor',
 						'automatic_anchor_insert'    => false,
+						'visible_editor_apply'       => true,
 						'post_content_patch_handoff' => false,
 						'current_post_excluded'      => true,
 					),
 					'handoff'                => array(
-						'final_writes'           => 'operator_review_only_no_insert',
+						'final_writes'           => 'native_editor_commit',
 						'direct_wordpress_write' => false,
 						'blocked_actions'        => array(
-							'no_link_insertion_in_toolkit_or_toolbox',
+							'no_backend_post_content_patch',
 							'no_patch_post_content_handoff_yet',
 							'no_automatic_anchor_insertion',
 						),
@@ -166,6 +191,53 @@ trait Internal_Link_Read_Methods {
 			),
 			'message' => __( 'Internal link targets resolved.', 'npcink-abilities-toolkit' ),
 		);
+	}
+
+	private function normalize_internal_link_content_blocks( $blocks ) {
+		if ( ! is_array( $blocks ) ) {
+			return array();
+		}
+		$normalized = array();
+		foreach ( array_slice( $blocks, 0, 80 ) as $block ) {
+			if ( ! is_array( $block ) ) {
+				continue;
+			}
+			$client_id = sanitize_text_field( (string) ( $block['client_id'] ?? '' ) );
+			$block_name = sanitize_key( str_replace( '/', '-', (string) ( $block['block_name'] ?? '' ) ) );
+			$text = $this->normalize_plain_text( $block['text'] ?? '' );
+			if ( '' !== $client_id && '' !== $text ) {
+				$normalized[] = array( 'client_id' => $client_id, 'block_name' => $block_name, 'text' => $text );
+			}
+		}
+		return $normalized;
+	}
+
+	private function internal_link_source_match( array $blocks, $selected_text, $anchor_text, $title ) {
+		$phrases = array_filter( array_unique( array_map( 'trim', array( $selected_text, $anchor_text, $title ) ) ) );
+		foreach ( $blocks as $block ) {
+			foreach ( $phrases as $phrase ) {
+				$phrase_length = $this->internal_link_text_length( $phrase );
+				if ( $phrase_length < 2 || $phrase_length > 80 ) {
+					continue;
+				}
+				$offset = function_exists( 'mb_stripos' ) ? mb_stripos( $block['text'], $phrase ) : stripos( $block['text'], $phrase );
+				if ( false !== $offset ) {
+					return array(
+						'block_client_id' => $block['client_id'],
+						'block_name'      => $block['block_name'],
+						'matched_text'    => $phrase,
+						'text_offset'     => (int) $offset,
+						'expected_text'   => $block['text'],
+						'match_basis'     => $phrase === trim( (string) $selected_text ) ? 'editor_selection' : 'existing_article_phrase',
+					);
+				}
+			}
+		}
+		return array();
+	}
+
+	private function internal_link_text_length( $value ) {
+		return function_exists( 'mb_strlen' ) ? mb_strlen( (string) $value ) : strlen( (string) $value );
 	}
 
 	/**
@@ -198,6 +270,15 @@ trait Internal_Link_Read_Methods {
 			}
 
 			$score = is_numeric( $item['score'] ?? null ) ? (float) $item['score'] : null;
+			$link_graph_issues = array_values( array_filter( array_map( 'sanitize_key', is_array( $item['link_graph_issues'] ?? null ) ? $item['link_graph_issues'] : array() ) ) );
+			$shared_terms = array_slice( array_values( array_filter( array_map( 'sanitize_text_field', is_array( $item['shared_terms'] ?? null ) ? $item['shared_terms'] : array() ) ) ), 0, 3 );
+			$priority_score = null === $score ? 0.0 : $score;
+			if ( in_array( 'orphan_post', $link_graph_issues, true ) ) {
+				$priority_score += 0.12;
+			}
+			if ( ! empty( $shared_terms ) ) {
+				$priority_score += 0.08;
+			}
 			$evidence_ref = sanitize_key( (string) ( $item['evidence_ref'] ?? ( 0 < $post_id ? 'supplied_post_' . $post_id : 'supplied_related_' . ( $index + 1 ) ) ) );
 			$items[] = array(
 				'post_id'         => $post_id,
@@ -206,6 +287,10 @@ trait Internal_Link_Read_Methods {
 				'anchor_text'     => $this->internal_link_anchor_from_title( $title ),
 				'reason'          => $this->sanitize_metadata_text( (string) ( $item['reason'] ?? $item['excerpt'] ?? $item['snippet'] ?? '' ) ),
 				'relevance_score' => $score,
+				'priority_score'  => $priority_score,
+				'incoming_count'  => $this->absint_value( $item['incoming_count'] ?? 0 ),
+				'link_graph_issues' => $link_graph_issues,
+				'shared_terms'    => $shared_terms,
 				'source'          => 'supplied_related_content_evidence',
 				'evidence_refs'   => array( $evidence_ref ),
 			);
@@ -221,11 +306,16 @@ trait Internal_Link_Read_Methods {
 	 * @return string
 	 */
 	private function internal_link_anchor_from_title( $title ) {
-		if ( function_exists( 'wp_trim_words' ) ) {
-			$anchor = trim( sanitize_text_field( wp_trim_words( (string) $title, 8, '' ) ) );
-		} else {
-			$words = preg_split( '/\s+/u', trim( (string) $title ) );
-			$anchor = trim( sanitize_text_field( implode( ' ', array_slice( is_array( $words ) ? $words : array(), 0, 8 ) ) ) );
+		$anchor = trim( sanitize_text_field( (string) $title ) );
+		$max_chars = 80;
+		if ( $this->internal_link_text_length( $anchor ) > $max_chars ) {
+			$cut = function_exists( 'mb_substr' ) ? mb_substr( $anchor, 0, $max_chars, 'UTF-8' ) : substr( $anchor, 0, $max_chars );
+			$next = function_exists( 'mb_substr' ) ? mb_substr( $anchor, $max_chars, 1, 'UTF-8' ) : substr( $anchor, $max_chars, 1 );
+			// Do not leave a partial ASCII word at the end of a mixed-language anchor.
+			if ( preg_match( '/[A-Za-z0-9]$/', $cut ) && preg_match( '/^[A-Za-z0-9]/', $next ) ) {
+				$cut = preg_replace( '/[A-Za-z0-9]+$/', '', $cut ) ?? $cut;
+			}
+			$anchor = trim( $cut, " \t\n\r\0\x0B,.;:!?，。；：、-" );
 		}
 		return '' !== $anchor ? $anchor : __( 'Related article', 'npcink-abilities-toolkit' );
 	}
