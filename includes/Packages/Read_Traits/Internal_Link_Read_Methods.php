@@ -34,12 +34,14 @@ trait Internal_Link_Read_Methods {
 		$focus_keyword = sanitize_text_field( (string) ( $input['focus_keyword'] ?? '' ) );
 		$keywords = is_array( $input['keywords'] ?? null ) ? $input['keywords'] : array();
 		$content_blocks = $this->normalize_internal_link_content_blocks( $input['content_blocks'] ?? array() );
+		$supplied_evidence = $this->normalize_supplied_internal_link_evidence( $input['related_content_evidence'] ?? array(), $current_post_id );
+		$candidate_source = sanitize_key( (string) ( $input['candidate_source'] ?? ( empty( $supplied_evidence ) ? 'local_fallback' : 'supplied_evidence' ) ) );
 		$terms = $this->collect_focus_terms( $title, $focus_keyword, array_merge( $keywords, array( $query_text, $selected_text, $excerpt, $user_instruction ) ) );
 		$max_targets = max( 1, min( 6, $this->absint_value( $input['max_targets'] ?? 3 ) ) );
 		$candidate_limit = max( 1, min( 8, $this->absint_value( $input['candidate_limit'] ?? $max_targets ) ) );
 
 		$targets = array();
-		if ( class_exists( '\WP_Query' ) ) {
+		if ( empty( $supplied_evidence ) && class_exists( '\WP_Query' ) ) {
 			foreach ( array_slice( $terms, 0, 4 ) as $term ) {
 				$query = new \WP_Query(
 					array(
@@ -75,7 +77,7 @@ trait Internal_Link_Read_Methods {
 			}
 		}
 
-		foreach ( $this->normalize_supplied_internal_link_evidence( $input['related_content_evidence'] ?? array(), $current_post_id ) as $evidence_item ) {
+		foreach ( $supplied_evidence as $evidence_item ) {
 			$post_id = $this->absint_value( $evidence_item['post_id'] ?? 0 );
 			$key = 0 < $post_id ? $post_id : 'url:' . (string) ( $evidence_item['url'] ?? '' );
 			if ( '' === (string) $key ) {
@@ -143,6 +145,7 @@ trait Internal_Link_Read_Methods {
 				'score'                 => is_numeric( $target['relevance_score'] ?? null ) ? (float) $target['relevance_score'] : null,
 				'source_match'          => $source_match,
 				'source'                => sanitize_key( (string) ( $target['source'] ?? 'local_internal_link_inventory' ) ),
+				'candidate_source'      => $candidate_source,
 				'status'                => 'review_only_candidate',
 			);
 		}
@@ -161,6 +164,7 @@ trait Internal_Link_Read_Methods {
 					'final_write_path'       => 'native_editor_commit',
 					'direct_wordpress_write' => false,
 					'source_ability_id'      => 'npcink-abilities-toolkit/resolve-internal-link-targets',
+					'candidate_source'       => $candidate_source,
 					'items'                  => $candidate_items,
 					'review_policy'          => array(
 						'link_insertion_owner'       => 'human_editor',

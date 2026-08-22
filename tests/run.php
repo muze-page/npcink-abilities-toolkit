@@ -4215,6 +4215,7 @@ npcink_abilities_toolkit_assert_same( array( 'workflow' ), $prioritized_internal
 $matched_internal_links = array_values( array_filter( $internal_link_candidates['data']['internal_link_candidates']['items'] ?? array(), static fn( $item ) => ! empty( $item['source_match'] ) ) );
 npcink_abilities_toolkit_assert_same( 'block-workflow', $matched_internal_links[0]['source_match']['block_client_id'] ?? '', 'resolve-internal-link-targets locates an exact existing editor phrase' );
 npcink_abilities_toolkit_assert_same( 'workflow optimization', $matched_internal_links[0]['suggested_anchor_text'] ?? '', 'resolve-internal-link-targets uses the exact article phrase as the reviewed anchor' );
+npcink_abilities_toolkit_assert_same( 'supplied_evidence', $matched_internal_links[0]['candidate_source'] ?? '', 'resolve-internal-link-targets labels supplied semantic evidence separately from local fallback' );
 $mixed_anchor_result = $core_read_package->resolve_internal_link_targets(
 	array(
 		'current_post_id' => 77,
