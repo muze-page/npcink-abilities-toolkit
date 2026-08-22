@@ -215,9 +215,13 @@ trait Internal_Link_Read_Methods {
 	private function internal_link_source_match( array $blocks, $selected_text, $anchor_text, $title ) {
 		$phrases = array_filter( array_unique( array_map( 'trim', array( $selected_text, $anchor_text, $title ) ) ) );
 		foreach ( $blocks as $block ) {
+			if ( $this->internal_link_is_heading_block( $block['block_name'] ?? '' ) ) {
+				continue;
+			}
 			foreach ( $phrases as $phrase ) {
 				$phrase_length = $this->internal_link_text_length( $phrase );
-				if ( $phrase_length < 2 || $phrase_length > 80 ) {
+				$is_explicit_selection = $phrase === trim( (string) $selected_text );
+				if ( ( ! $is_explicit_selection && $phrase_length < 4 ) || $phrase_length > 80 ) {
 					continue;
 				}
 				$offset = function_exists( 'mb_stripos' ) ? mb_stripos( $block['text'], $phrase ) : stripos( $block['text'], $phrase );
@@ -234,6 +238,11 @@ trait Internal_Link_Read_Methods {
 			}
 		}
 		return array();
+	}
+
+	private function internal_link_is_heading_block( $block_name ) {
+		$name = sanitize_key( str_replace( '/', '-', (string) $block_name ) );
+		return in_array( $name, array( 'core-heading', 'core-post-title', 'core-query-title' ), true );
 	}
 
 	private function internal_link_text_length( $value ) {

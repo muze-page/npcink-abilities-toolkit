@@ -4247,6 +4247,22 @@ $long_mixed_result = $core_read_package->resolve_internal_link_targets(
 );
 $long_mixed_anchor = (string) ( $long_mixed_result['data']['internal_link_candidates']['items'][0]['suggested_anchor_text'] ?? '' );
 npcink_abilities_toolkit_assert_true( $long_mixed_anchor !== '' && 1 !== preg_match( '/[A-Za-z0-9]$/', $long_mixed_anchor ), 'resolve-internal-link-targets backs up before an ASCII word when the title limit falls inside that word' );
+$heading_match_result = $core_read_package->resolve_internal_link_targets(
+	array(
+		'current_post_id' => 77,
+		'content_blocks'  => array( array( 'client_id' => 'block-heading', 'block_name' => 'core/heading', 'text' => '功能丰富的主题机制' ) ),
+		'related_content_evidence' => array( array( 'post_id' => 280979, 'title' => '主题机制详解', 'url' => 'https://example.test/heading-match' ) ),
+	)
+);
+npcink_abilities_toolkit_assert_true( empty( $heading_match_result['data']['internal_link_candidates']['items'][0]['source_match'] ?? array() ), 'resolve-internal-link-targets never proposes an automatic match inside a heading block' );
+$generic_phrase_result = $core_read_package->resolve_internal_link_targets(
+	array(
+		'current_post_id' => 77,
+		'content_blocks'  => array( array( 'client_id' => 'block-generic', 'block_name' => 'core/paragraph', 'text' => '本文介绍主题相关配置。' ) ),
+		'related_content_evidence' => array( array( 'post_id' => 280980, 'title' => '主题', 'url' => 'https://example.test/generic-anchor' ) ),
+	)
+);
+npcink_abilities_toolkit_assert_true( empty( $generic_phrase_result['data']['internal_link_candidates']['items'][0]['source_match'] ?? array() ), 'resolve-internal-link-targets rejects an unselected generic two-character anchor' );
 $GLOBALS['npcink_abilities_toolkit_unit_comments'][21] = (object) array(
 	'comment_ID'       => 21,
 	'comment_post_ID'  => 77,
