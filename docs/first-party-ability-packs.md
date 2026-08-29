@@ -45,6 +45,12 @@ Representative abilities:
 - `npcink-abilities-toolkit/list-media`
 - `npcink-abilities-toolkit/resolve-media-attachment-by-url`
 - `npcink-abilities-toolkit/get-media-inventory-health`
+
+`get-media-inventory-health` defaults to the existing date-descending order for
+operator scans. Resumable Cloud media recognition may pass the bounded
+`stable_order=id_asc` option so newly created attachments append after the
+already scanned ID range instead of shifting page boundaries.
+
 - `npcink-abilities-toolkit/inspect-media-asset`
 - `npcink-abilities-toolkit/list-media-backups`
 - `npcink-abilities-toolkit/build-media-derivative-cloud-request`
