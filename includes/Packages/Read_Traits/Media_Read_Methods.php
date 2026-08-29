@@ -958,8 +958,8 @@ trait Media_Read_Methods {
 					),
 					'total_issue_instances' => $total_issue_instances,
 					'mime_type'             => $mime_type,
-				'search'                => $search,
-				'stable_order'          => $stable_order,
+					'search'                => $search,
+					'stable_order'          => $stable_order,
 				),
 			),
 			array(
