@@ -908,7 +908,11 @@ trait Media_Read_Methods {
 		);
 		$per_page = max( 1, min( 100, $this->absint_value( $input['per_page'] ?? 50 ) ) );
 		$page = max( 1, $this->absint_value( $input['page'] ?? 1 ) );
-		$query_result = $this->query_media_inventory( $mime_type, $search, $per_page, $page, $attachment_ids );
+		$stable_order = sanitize_key( (string) ( $input['stable_order'] ?? 'date_desc' ) );
+		if ( ! in_array( $stable_order, array( 'date_desc', 'id_asc' ), true ) ) {
+			$stable_order = 'date_desc';
+		}
+		$query_result = $this->query_media_inventory( $mime_type, $search, $per_page, $page, $attachment_ids, $stable_order );
 		$attachment_ids = is_array( $query_result['attachment_ids'] ?? null ) ? $query_result['attachment_ids'] : array();
 		$items = array();
 		$issue_counts = array();
@@ -955,6 +959,7 @@ trait Media_Read_Methods {
 					'total_issue_instances' => $total_issue_instances,
 					'mime_type'             => $mime_type,
 					'search'                => $search,
+					'stable_order'          => $stable_order,
 				),
 			),
 			array(
@@ -5485,16 +5490,17 @@ trait Media_Read_Methods {
 	 * @param int    $per_page Per page.
 	 * @param int    $page Page.
 	 * @param int[]  $attachment_ids Optional bounded attachment identities.
+	 * @param string $stable_order Stable ordering mode for resumable scans.
 	 * @return array<string,mixed>
 	 */
-	private function query_media_inventory( $mime_type, $search, $per_page, $page, $attachment_ids = array() ) {
+	private function query_media_inventory( $mime_type, $search, $per_page, $page, $attachment_ids = array(), $stable_order = 'date_desc' ) {
 		$args = array(
 			'post_type'      => 'attachment',
 			'post_status'    => 'inherit',
 			'posts_per_page' => $per_page,
 			'paged'          => $page,
-			'orderby'        => 'date',
-			'order'          => 'DESC',
+			'orderby'        => 'id_asc' === $stable_order ? 'ID' : 'date',
+			'order'          => 'id_asc' === $stable_order ? 'ASC' : 'DESC',
 			'fields'         => 'ids',
 		);
 		if ( '' !== $mime_type ) {
@@ -5539,6 +5545,9 @@ trait Media_Read_Methods {
 				continue;
 			}
 			$filtered[] = $current_id;
+		}
+		if ( 'id_asc' === $stable_order ) {
+			sort( $filtered, SORT_NUMERIC );
 		}
 
 		return array(

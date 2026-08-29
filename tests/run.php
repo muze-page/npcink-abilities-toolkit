@@ -2044,6 +2044,7 @@ npcink_abilities_toolkit_assert_same( array( 'new_article', 'refresh', 'publish'
 npcink_abilities_toolkit_assert_same( 365, $package_abilities['npcink-abilities-toolkit/get-publishing-calendar-context']['input_schema']['properties']['window_days']['maximum'] ?? null, 'publishing calendar window is bounded to 365 days' );
 npcink_abilities_toolkit_assert_same( 100, $package_abilities['npcink-abilities-toolkit/get-media-inventory-health']['input_schema']['properties']['per_page']['maximum'] ?? null, 'media inventory health scan is bounded to 100 assets per page' );
 npcink_abilities_toolkit_assert_same( 20, $package_abilities['npcink-abilities-toolkit/get-media-inventory-health']['input_schema']['properties']['attachment_ids']['maxItems'] ?? null, 'media inventory attachment-id revalidation is bounded to 20 assets' );
+npcink_abilities_toolkit_assert_same( array( 'date_desc', 'id_asc' ), $package_abilities['npcink-abilities-toolkit/get-media-inventory-health']['input_schema']['properties']['stable_order']['enum'] ?? array(), 'media inventory exposes only the bounded date or stable ID ordering modes' );
 npcink_abilities_toolkit_assert_same( array( 'post_id' ), $package_abilities['npcink-abilities-toolkit/get-post-seo-geo-readiness']['input_schema']['required'] ?? array(), 'post SEO/GEO readiness requires post_id' );
 npcink_abilities_toolkit_assert_same( 100, $package_abilities['npcink-abilities-toolkit/get-site-topic-coverage-report']['input_schema']['properties']['per_page']['maximum'] ?? null, 'site topic coverage scan is bounded to 100 posts per page' );
 npcink_abilities_toolkit_assert_same( 100, $package_abilities['npcink-abilities-toolkit/get-taxonomy-inventory-health']['input_schema']['properties']['per_page']['maximum'] ?? null, 'taxonomy inventory health scan is bounded to 100 terms per page' );
@@ -6932,11 +6933,13 @@ $media_health = $core_read_package->get_media_inventory_health(
 	array(
 		'mime_type' => 'image',
 		'per_page'  => 5,
+		'stable_order' => 'id_asc',
 	)
 );
 npcink_abilities_toolkit_assert_same( true, $media_health['success'] ?? null, 'get-media-inventory-health returns a success envelope' );
 npcink_abilities_toolkit_assert_true( (int) ( $media_health['data']['summary']['scanned_count'] ?? 0 ) >= 1, 'get-media-inventory-health scans local media rows' );
 npcink_abilities_toolkit_assert_true( isset( $media_health['data']['issue_counts']['missing_alt'] ), 'get-media-inventory-health counts missing alt text' );
+npcink_abilities_toolkit_assert_same( 'id_asc', $media_health['data']['summary']['stable_order'] ?? '', 'get-media-inventory-health reports the stable order used for resumable scans' );
 $media_health_row = npcink_abilities_toolkit_find_row_by_key( (array) ( $media_health['data']['items'] ?? array() ), 'attachment_id', 79 );
 npcink_abilities_toolkit_assert_same( true, $media_health_row['format_inspection']['format_plan']['needs_attention'] ?? null, 'get-media-inventory-health includes format inspection attention state' );
 npcink_abilities_toolkit_assert_true( in_array( 'legacy_image_format', (array) ( $media_health_row['format_inspection']['warnings'] ?? array() ), true ), 'get-media-inventory-health includes legacy format warning' );

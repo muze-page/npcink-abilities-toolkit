@@ -693,6 +693,7 @@ final class Media_Governance_Read_Definitions {
 						),
 						'per_page'       => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 50 ),
 						'page'           => array( 'type' => 'integer', 'minimum' => 1, 'default' => 1 ),
+						'stable_order'  => array( 'type' => 'string', 'enum' => array( 'date_desc', 'id_asc' ), 'default' => 'date_desc' ),
 					),
 					'additionalProperties' => false,
 				),
