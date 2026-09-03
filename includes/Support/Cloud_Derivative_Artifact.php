@@ -16,6 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Cloud_Derivative_Artifact {
 	public const MAX_FILESIZE_BYTES = 26214400;
+	public const MAX_SOURCE_FILESIZE_BYTES = 52428800;
 	public const MAX_DIMENSION       = 8192;
 	public const MAX_PIXEL_AREA      = 16777216;
 
@@ -50,6 +51,32 @@ final class Cloud_Derivative_Artifact {
 		'expires_at',
 		'transfer_evidence',
 		'delivery_ack',
+	);
+
+	private const TRANSFORM_FACT_KEYS = array(
+		'source_checksum',
+		'output_checksum',
+		'source_format',
+		'output_format',
+		'source_mime_type',
+		'output_mime_type',
+		'source_width',
+		'source_height',
+		'output_width',
+		'output_height',
+		'source_filesize_bytes',
+		'output_filesize_bytes',
+		'source_frame_count',
+		'output_frame_count',
+		'source_has_alpha',
+		'output_has_alpha',
+		'alpha_preserved',
+		'decodable',
+		'crop_applied',
+		'watermark_applied',
+		'resize_applied',
+		'encoding_mode',
+		'savings_basis_points',
 	);
 
 	private const TRANSFER_EVIDENCE_KEYS = array(
@@ -114,11 +141,7 @@ final class Cloud_Derivative_Artifact {
 					'maxItems' => 20,
 					'items'    => array( 'type' => 'string', 'maxLength' => 200 ),
 				),
-				'transform_facts' => array(
-					'type' => 'object',
-					'properties' => array_fill_keys( array( 'source_checksum', 'output_checksum', 'source_format', 'output_format', 'source_mime_type', 'output_mime_type', 'source_width', 'source_height', 'output_width', 'output_height', 'source_filesize_bytes', 'output_filesize_bytes', 'source_frame_count', 'output_frame_count', 'source_has_alpha', 'output_has_alpha', 'alpha_preserved', 'decodable', 'crop_applied', 'watermark_applied', 'resize_applied', 'encoding_mode', 'savings_basis_points' ), array() ),
-					'additionalProperties' => false,
-				),
+				'transform_facts'    => self::transform_facts_schema(),
 			),
 			'required'             => self::DESCRIPTOR_KEYS,
 			'additionalProperties' => false,
@@ -269,7 +292,10 @@ final class Cloud_Derivative_Artifact {
 			return $warnings;
 		}
 		$normalized['processing_warnings'] = $warnings;
-		$transform_facts = is_array( $artifact['transform_facts'] ?? null ) ? $artifact['transform_facts'] : array();
+		$transform_facts = self::normalize_transform_facts( $artifact['transform_facts'] ?? null, $normalized );
+		if ( is_wp_error( $transform_facts ) ) {
+			return $transform_facts;
+		}
 		$normalized['transform_facts'] = $transform_facts;
 
 		return $normalized;
@@ -445,6 +471,119 @@ final class Cloud_Derivative_Artifact {
 			'image/jpeg' => 'jpeg',
 			'image/png'  => 'png',
 		);
+	}
+
+	/**
+	 * Returns the strict Cloud v2 image transformation fact schema.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function transform_facts_schema() {
+		$formats = array_values( self::format_by_mime() );
+		$mimes   = array_keys( self::format_by_mime() );
+
+		return array(
+			'type'                 => 'object',
+			'properties'           => array(
+				'source_checksum'      => array( 'type' => 'string', 'pattern' => '^sha256:[a-f0-9]{64}$' ),
+				'output_checksum'      => array( 'type' => 'string', 'pattern' => '^sha256:[a-f0-9]{64}$' ),
+				'source_format'        => array( 'type' => 'string', 'enum' => $formats ),
+				'output_format'        => array( 'type' => 'string', 'enum' => $formats ),
+				'source_mime_type'     => array( 'type' => 'string', 'enum' => $mimes ),
+				'output_mime_type'     => array( 'type' => 'string', 'enum' => $mimes ),
+				'source_width'         => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => self::MAX_DIMENSION ),
+				'source_height'        => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => self::MAX_DIMENSION ),
+				'output_width'         => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => self::MAX_DIMENSION ),
+				'output_height'        => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => self::MAX_DIMENSION ),
+				'source_filesize_bytes' => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => self::MAX_SOURCE_FILESIZE_BYTES ),
+				'output_filesize_bytes' => array( 'type' => 'integer', 'minimum' => 1, 'maximum' => self::MAX_FILESIZE_BYTES ),
+				'source_frame_count'   => array( 'type' => 'integer', 'enum' => array( 1 ) ),
+				'output_frame_count'   => array( 'type' => 'integer', 'enum' => array( 1 ) ),
+				'source_has_alpha'     => array( 'type' => 'boolean' ),
+				'output_has_alpha'     => array( 'type' => 'boolean' ),
+				'alpha_preserved'      => array( 'type' => 'boolean' ),
+				'decodable'            => array( 'type' => 'boolean', 'enum' => array( true ) ),
+				'crop_applied'         => array( 'type' => 'boolean' ),
+				'watermark_applied'    => array( 'type' => 'boolean' ),
+				'resize_applied'       => array( 'type' => 'boolean' ),
+				'encoding_mode'        => array( 'type' => 'string', 'enum' => array( 'lossless', 'lossy', 'unknown' ) ),
+				'savings_basis_points' => array( 'type' => 'integer', 'minimum' => 0, 'maximum' => 10000 ),
+			),
+			'required'             => self::TRANSFORM_FACT_KEYS,
+			'additionalProperties' => false,
+		);
+	}
+
+	/**
+	 * Validates Cloud v2 transformation facts for direct PHP callers.
+	 *
+	 * @param mixed               $value Transformation facts.
+	 * @param array<string,mixed> $artifact Normalized outer artifact facts.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	private static function normalize_transform_facts( $value, array $artifact ) {
+		if ( ! is_array( $value ) ) {
+			return self::error( 'transform_facts_invalid', __( 'Derivative transformation facts must be an object.', 'npcink-abilities-toolkit' ) );
+		}
+		$keys_valid = self::validate_exact_keys( $value, self::TRANSFORM_FACT_KEYS, 'transform_facts_fields_invalid', __( 'Derivative transformation facts do not match the required Cloud v2 contract.', 'npcink-abilities-toolkit' ) );
+		if ( is_wp_error( $keys_valid ) ) {
+			return $keys_valid;
+		}
+
+		$format_by_mime = self::format_by_mime();
+		foreach ( array( 'source', 'output' ) as $side ) {
+			$checksum = $value[ $side . '_checksum' ];
+			$format   = $value[ $side . '_format' ];
+			$mime     = $value[ $side . '_mime_type' ];
+			$width    = $value[ $side . '_width' ];
+			$height   = $value[ $side . '_height' ];
+			$filesize = $value[ $side . '_filesize_bytes' ];
+			$max_size = 'source' === $side ? self::MAX_SOURCE_FILESIZE_BYTES : self::MAX_FILESIZE_BYTES;
+
+			if ( ! is_string( $checksum ) || 1 !== preg_match( '/^sha256:[a-f0-9]{64}$/D', $checksum ) ) {
+				return self::error( 'transform_facts_checksum_invalid', __( 'Derivative transformation checksums must use canonical SHA-256 values.', 'npcink-abilities-toolkit' ) );
+			}
+			if ( ! is_string( $mime ) || ! is_string( $format ) || ! isset( $format_by_mime[ $mime ] ) || $format_by_mime[ $mime ] !== $format ) {
+				return self::error( 'transform_facts_format_invalid', __( 'Derivative transformation MIME types and formats must agree.', 'npcink-abilities-toolkit' ) );
+			}
+			if ( ! self::dimensions_within_limits( $width, $height ) || ! is_int( $filesize ) || $filesize <= 0 || $filesize > $max_size ) {
+				return self::error( 'transform_facts_dimensions_invalid', __( 'Derivative transformation dimensions and file sizes must stay within media limits.', 'npcink-abilities-toolkit' ) );
+			}
+			if ( 1 !== $value[ $side . '_frame_count' ] ) {
+				return self::error( 'transform_facts_frame_count_invalid', __( 'Animated derivative transformation facts are not supported.', 'npcink-abilities-toolkit' ) );
+			}
+			if ( ! is_bool( $value[ $side . '_has_alpha' ] ) ) {
+				return self::error( 'transform_facts_alpha_invalid', __( 'Derivative transformation alpha facts must be boolean values.', 'npcink-abilities-toolkit' ) );
+			}
+		}
+
+		foreach ( array( 'alpha_preserved', 'decodable', 'crop_applied', 'watermark_applied', 'resize_applied' ) as $field ) {
+			if ( ! is_bool( $value[ $field ] ) ) {
+				return self::error( 'transform_facts_boolean_invalid', __( 'Derivative transformation flags must be boolean values.', 'npcink-abilities-toolkit' ) );
+			}
+		}
+		if ( true !== $value['decodable'] || $value['alpha_preserved'] !== ( $value['source_has_alpha'] === $value['output_has_alpha'] ) ) {
+			return self::error( 'transform_facts_evidence_invalid', __( 'Derivative transformation decode and alpha evidence is inconsistent.', 'npcink-abilities-toolkit' ) );
+		}
+		if ( ! is_string( $value['encoding_mode'] ) || ! in_array( $value['encoding_mode'], array( 'lossless', 'lossy', 'unknown' ), true ) ) {
+			return self::error( 'transform_facts_encoding_invalid', __( 'Derivative transformation encoding mode is invalid.', 'npcink-abilities-toolkit' ) );
+		}
+		if ( ! is_int( $value['savings_basis_points'] ) || $value['savings_basis_points'] < 0 || $value['savings_basis_points'] > 10000 ) {
+			return self::error( 'transform_facts_savings_invalid', __( 'Derivative transformation savings evidence is invalid.', 'npcink-abilities-toolkit' ) );
+		}
+
+		if (
+			$value['output_checksum'] !== 'sha256:' . $artifact['sha256']
+			|| $value['output_format'] !== $artifact['format']
+			|| $value['output_mime_type'] !== $artifact['mime_type']
+			|| $value['output_width'] !== $artifact['width']
+			|| $value['output_height'] !== $artifact['height']
+			|| $value['output_filesize_bytes'] !== $artifact['filesize_bytes']
+		) {
+			return self::error( 'transform_facts_output_mismatch', __( 'Derivative transformation output facts do not match the reviewed artifact.', 'npcink-abilities-toolkit' ) );
+		}
+
+		return $value;
 	}
 
 	/**
