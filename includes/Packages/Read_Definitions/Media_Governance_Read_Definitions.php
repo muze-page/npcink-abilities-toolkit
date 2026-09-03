@@ -867,6 +867,7 @@ final class Media_Governance_Read_Definitions {
 						'file_name'                      => array( 'type' => 'string', 'maxLength' => 120 ),
 						'expected_current_relative_file' => array( 'type' => 'string' ),
 						'expected_current_mime_type'     => array( 'type' => 'string' ),
+						'expected_current_media_fingerprint' => array( 'type' => 'string', 'minLength' => 64, 'maxLength' => 71 ),
 						'expected_derivative_mime_type'  => array( 'type' => 'string' ),
 						'expected_storage_provider'      => array( 'type' => 'string' ),
 						'expected_storage_adapter'       => array( 'type' => 'string' ),

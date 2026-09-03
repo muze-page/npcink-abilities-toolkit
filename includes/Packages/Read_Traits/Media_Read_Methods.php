@@ -5610,7 +5610,16 @@ trait Media_Read_Methods {
 
 		$modified_gmt = is_object( $attachment ) ? sanitize_text_field( (string) ( $attachment->post_modified_gmt ?? '' ) ) : '';
 		$url = function_exists( 'wp_get_attachment_url' ) ? $this->esc_url_value( (string) wp_get_attachment_url( $attachment_id ) ) : '';
-		$media_fingerprint = hash(
+		$file_path = function_exists( 'get_attached_file' ) ? (string) get_attached_file( $attachment_id ) : '';
+		if ( '' !== $file_path && ! is_readable( $file_path ) && function_exists( 'wp_upload_dir' ) ) {
+			$upload_dir = wp_upload_dir();
+			$base_dir = (string) ( $upload_dir['basedir'] ?? '' );
+			if ( '' !== $base_dir && 0 !== strpos( $file_path, '/' ) ) {
+				$file_path = rtrim( $base_dir, '/\\' ) . '/' . ltrim( $file_path, '/' );
+			}
+		}
+		$media_fingerprint = '' !== $file_path && is_readable( $file_path ) ? 'sha256:' . strtolower( (string) hash_file( 'sha256', $file_path ) ) : '';
+		$metadata_fingerprint = hash(
 			'sha256',
 			(string) wp_json_encode(
 				array(
@@ -5633,6 +5642,7 @@ trait Media_Read_Methods {
 			'url'              => $url,
 			'modified_gmt'     => $modified_gmt,
 			'media_fingerprint' => $media_fingerprint,
+			'metadata_fingerprint' => $metadata_fingerprint,
 			'alt'              => $alt,
 			'caption'          => $caption,
 			'description'      => $description,
