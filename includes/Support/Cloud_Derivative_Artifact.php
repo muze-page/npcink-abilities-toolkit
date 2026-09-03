@@ -77,6 +77,15 @@ final class Cloud_Derivative_Artifact {
 		'resize_applied',
 		'encoding_mode',
 		'savings_basis_points',
+		'optimization_profile',
+		'source_class',
+		'effective_quality',
+		'quality_metric',
+		'quality_score',
+		'quality_threshold',
+		'color_profile_normalized',
+		'qualified',
+		'decision_reasons',
 	);
 
 	private const TRANSFER_EVIDENCE_KEYS = array(
@@ -474,7 +483,7 @@ final class Cloud_Derivative_Artifact {
 	}
 
 	/**
-	 * Returns the strict Cloud v2 image transformation fact schema.
+	 * Returns the strict Cloud v3 image transformation fact schema.
 	 *
 	 * @return array<string,mixed>
 	 */
@@ -508,6 +517,20 @@ final class Cloud_Derivative_Artifact {
 				'resize_applied'       => array( 'type' => 'boolean' ),
 				'encoding_mode'        => array( 'type' => 'string', 'enum' => array( 'lossless', 'lossy', 'unknown' ) ),
 				'savings_basis_points' => array( 'type' => 'integer', 'minimum' => 0, 'maximum' => 10000 ),
+				'optimization_profile' => array( 'type' => 'string', 'enum' => array( 'manual', 'auto_safe.v1' ) ),
+				'source_class'         => array( 'type' => 'string', 'enum' => array( 'opaque', 'transparent' ) ),
+				'effective_quality'    => array( 'type' => array( 'integer', 'null' ), 'minimum' => 1, 'maximum' => 100 ),
+				'quality_metric'       => array( 'type' => 'string', 'enum' => array( 'not_evaluated', 'pixel_equality', 'ssim' ) ),
+				'quality_score'        => array( 'type' => array( 'number', 'integer', 'null' ), 'minimum' => 0, 'maximum' => 1 ),
+				'quality_threshold'    => array( 'type' => array( 'number', 'integer', 'null' ), 'minimum' => 0, 'maximum' => 1 ),
+				'color_profile_normalized' => array( 'type' => 'boolean' ),
+				'qualified'            => array( 'type' => 'boolean' ),
+				'decision_reasons'     => array(
+					'type'     => 'array',
+					'minItems' => 1,
+					'maxItems' => 20,
+					'items'    => array( 'type' => 'string', 'maxLength' => 80 ),
+				),
 			),
 			'required'             => self::TRANSFORM_FACT_KEYS,
 			'additionalProperties' => false,
@@ -515,7 +538,7 @@ final class Cloud_Derivative_Artifact {
 	}
 
 	/**
-	 * Validates Cloud v2 transformation facts for direct PHP callers.
+	 * Validates Cloud v3 transformation facts for direct PHP callers.
 	 *
 	 * @param mixed               $value Transformation facts.
 	 * @param array<string,mixed> $artifact Normalized outer artifact facts.
@@ -525,7 +548,7 @@ final class Cloud_Derivative_Artifact {
 		if ( ! is_array( $value ) ) {
 			return self::error( 'transform_facts_invalid', __( 'Derivative transformation facts must be an object.', 'npcink-abilities-toolkit' ) );
 		}
-		$keys_valid = self::validate_exact_keys( $value, self::TRANSFORM_FACT_KEYS, 'transform_facts_fields_invalid', __( 'Derivative transformation facts do not match the required Cloud v2 contract.', 'npcink-abilities-toolkit' ) );
+		$keys_valid = self::validate_exact_keys( $value, self::TRANSFORM_FACT_KEYS, 'transform_facts_fields_invalid', __( 'Derivative transformation facts do not match the required Cloud v3 contract.', 'npcink-abilities-toolkit' ) );
 		if ( is_wp_error( $keys_valid ) ) {
 			return $keys_valid;
 		}
@@ -570,6 +593,48 @@ final class Cloud_Derivative_Artifact {
 		}
 		if ( ! is_int( $value['savings_basis_points'] ) || $value['savings_basis_points'] < 0 || $value['savings_basis_points'] > 10000 ) {
 			return self::error( 'transform_facts_savings_invalid', __( 'Derivative transformation savings evidence is invalid.', 'npcink-abilities-toolkit' ) );
+		}
+
+		$profile = $value['optimization_profile'];
+		$source_class = $value['source_class'];
+		$effective_quality = $value['effective_quality'];
+		$quality_metric = $value['quality_metric'];
+		$quality_score = $value['quality_score'];
+		$quality_threshold = $value['quality_threshold'];
+		if (
+			! is_string( $profile ) || ! in_array( $profile, array( 'manual', 'auto_safe.v1' ), true )
+			|| ! is_string( $source_class ) || ! in_array( $source_class, array( 'opaque', 'transparent' ), true )
+			|| ( null !== $effective_quality && ( ! is_int( $effective_quality ) || $effective_quality < 1 || $effective_quality > 100 ) )
+			|| ! is_string( $quality_metric ) || ! in_array( $quality_metric, array( 'not_evaluated', 'pixel_equality', 'ssim' ), true )
+			|| ( null !== $quality_score && ( ! is_numeric( $quality_score ) || $quality_score < 0 || $quality_score > 1 ) )
+			|| ( null !== $quality_threshold && ( ! is_numeric( $quality_threshold ) || $quality_threshold < 0 || $quality_threshold > 1 ) )
+			|| ! is_bool( $value['color_profile_normalized'] )
+			|| ! is_bool( $value['qualified'] )
+		) {
+			return self::error( 'transform_facts_quality_invalid', __( 'Derivative transformation quality evidence is invalid.', 'npcink-abilities-toolkit' ) );
+		}
+		$decision_reasons = $value['decision_reasons'];
+		if ( ! is_array( $decision_reasons ) || empty( $decision_reasons ) || count( $decision_reasons ) > 20 ) {
+			return self::error( 'transform_facts_decision_invalid', __( 'Derivative transformation decision evidence is invalid.', 'npcink-abilities-toolkit' ) );
+		}
+		foreach ( $decision_reasons as $reason ) {
+			if ( ! is_string( $reason ) || '' === $reason || strlen( $reason ) > 80 || sanitize_key( $reason ) !== $reason ) {
+				return self::error( 'transform_facts_decision_invalid', __( 'Derivative transformation decision evidence is invalid.', 'npcink-abilities-toolkit' ) );
+			}
+		}
+		if (
+			'auto_safe.v1' === $profile
+			&& (
+				true !== $value['qualified']
+				|| ! in_array( 'qualified', $decision_reasons, true )
+				|| null === $quality_score
+				|| null === $quality_threshold
+				|| (float) $quality_score < (float) $quality_threshold
+				|| ( 'opaque' === $source_class && ( 'ssim' !== $quality_metric || ! in_array( $effective_quality, array( 82, 88 ), true ) ) )
+				|| ( 'transparent' === $source_class && ( 'pixel_equality' !== $quality_metric || null !== $effective_quality || 1.0 !== (float) $quality_score ) )
+			)
+		) {
+			return self::error( 'transform_facts_auto_safe_invalid', __( 'Auto-safe derivative quality evidence is inconsistent.', 'npcink-abilities-toolkit' ) );
 		}
 
 		if (

@@ -32,6 +32,8 @@ final class Core_Write_Package {
 	private const MAX_SETTING_PATCH_NODES = 500;
 	private const MEDIA_BACKUP_RETENTION_DAYS = 30;
 	private const MEDIA_BACKUP_CLEANUP_HOOK = 'npcink_abilities_toolkit_cleanup_media_backups';
+	private const MEDIA_BACKUP_CLEANUP_AUTOMATIC = 'automatic_after_retention';
+	private const MEDIA_BACKUP_CLEANUP_MANUAL = 'manual_confirmation_required';
 
 	/**
 	 * Category registrar.
@@ -152,6 +154,9 @@ final class Core_Write_Package {
 			$changed = false;
 			foreach ( $history as &$record ) {
 				if ( ! is_array( $record ) || 'backup_expired' === (string) ( $record['status'] ?? '' ) ) {
+					continue;
+				}
+				if ( self::MEDIA_BACKUP_CLEANUP_MANUAL === (string) ( $record['backup_cleanup_policy'] ?? '' ) ) {
 					continue;
 				}
 				$backup = is_array( $record['backup'] ?? null ) ? $record['backup'] : array();
@@ -1175,6 +1180,9 @@ final class Core_Write_Package {
 							'expected_content_reference_post_count' => array( 'type' => 'integer', 'minimum' => 0, 'maximum' => 50 ),
 							'expected_content_reference_replacement_count' => array( 'type' => 'integer', 'minimum' => 0, 'maximum' => 1000 ),
 							'backup_suffix'                  => array( 'type' => 'string', 'maxLength' => 48, 'default' => 'npcink-abilities-toolkit-cloud-backup' ),
+							'batch_id'                       => array( 'type' => 'string', 'maxLength' => 80 ),
+							'optimization_profile'           => array( 'type' => 'string', 'enum' => array( 'auto_safe.v1', 'manual' ) ),
+							'batch_confirmation_digest'      => array( 'type' => 'string', 'pattern' => '^sha256:[0-9a-f]{64}$' ),
 						),
 						array( 'attachment_id', 'derivative_artifact' )
 				),
@@ -4495,8 +4503,16 @@ final class Core_Write_Package {
 				'preserve_attachment_metadata'   => true,
 				'source'                         => '' !== (string) ( $input['file_name'] ?? '' ) ? 'reviewed_input' : 'cloud_artifact_suggestion',
 			),
-			'content_reference_repair_expectations' => $this->normalize_media_content_reference_repair_expectations( $input ),
-			'_current'       => $current,
+				'content_reference_repair_expectations' => $this->normalize_media_content_reference_repair_expectations( $input ),
+				'batch_context' => array(
+					'batch_id'                  => sanitize_text_field( (string) ( $input['batch_id'] ?? '' ) ),
+					'optimization_profile'      => sanitize_text_field( (string) ( $input['optimization_profile'] ?? '' ) ),
+					'batch_confirmation_digest' => $this->normalize_media_sha256( (string) ( $input['batch_confirmation_digest'] ?? '' ) ),
+					'backup_cleanup_policy'     => '' !== sanitize_text_field( (string) ( $input['batch_id'] ?? '' ) )
+						? self::MEDIA_BACKUP_CLEANUP_MANUAL
+						: self::MEDIA_BACKUP_CLEANUP_AUTOMATIC,
+				),
+				'_current'       => $current,
 			'_derivative'    => $derivative,
 			'_backup_relative_file' => $backup_relative,
 		);
@@ -5676,8 +5692,12 @@ final class Core_Write_Package {
 				'derived_from_media_fingerprint' => (string) ( $plan['before']['media_fingerprint'] ?? '' ),
 				'transform_type' => $this->media_transform_type_from_facts( is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array() ),
 				'visual_reuse_policy' => $this->media_visual_reuse_policy_from_facts( is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array() ),
-				'transform_facts' => is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array(),
-			),
+					'transform_facts' => is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array(),
+					'batch_id' => sanitize_text_field( (string) ( $plan['batch_context']['batch_id'] ?? '' ) ),
+					'optimization_profile' => sanitize_text_field( (string) ( $plan['batch_context']['optimization_profile'] ?? '' ) ),
+					'batch_confirmation_digest' => $this->normalize_media_sha256( (string) ( $plan['batch_context']['batch_confirmation_digest'] ?? '' ) ),
+					'backup_cleanup_policy' => (string) ( $plan['batch_context']['backup_cleanup_policy'] ?? self::MEDIA_BACKUP_CLEANUP_AUTOMATIC ),
+				),
 			$batch_manifest
 		);
 		if ( is_wp_error( $history_updated ) ) {
@@ -5885,6 +5905,9 @@ final class Core_Write_Package {
 					'transform_type' => 'restore',
 					'visual_reuse_policy' => 'requires_reidentification',
 					'transform_facts' => array( 'restore_from_backup' => true ),
+					'backup_cleanup_policy' => self::MEDIA_BACKUP_CLEANUP_MANUAL === (string) ( $plan['_history']['backup_cleanup_policy'] ?? '' )
+						? self::MEDIA_BACKUP_CLEANUP_MANUAL
+						: self::MEDIA_BACKUP_CLEANUP_AUTOMATIC,
 				),
 				$batch_manifest
 			);

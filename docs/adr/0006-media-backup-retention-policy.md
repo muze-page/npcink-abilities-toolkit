@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded in part by the batch exception below
 
 ## Context
 
@@ -28,11 +28,22 @@ The current attachment file is never a cleanup target. Missing files are
 treated as already removed and are still marked expired. Cleanup is not an
 ability, queue, workflow runtime, approval path, or second backup registry.
 
+Exact-manifest media optimization batches are an explicit exception. Their
+replacement and restore history records use
+`backup_cleanup_policy=manual_confirmation_required`; the daily maintenance
+action must leave those backup files intact after the 30-day recovery window.
+Expiry changes the product guidance to recommend cleanup, but deletion requires
+a separate, explicit operator confirmation. Records without that policy retain
+the original automatic-after-retention behavior.
+
 ## Consequences
 
-- Disk usage is bounded without adding an operator-facing backup manager.
+- Legacy and non-batch operation disk usage remains bounded without adding an
+  operator-facing backup manager.
 - Restore remains available during the retention window and fails closed after
-  expiry.
+  expiry for automatically managed backups.
+- Exact-manifest batch backups remain restorable after the displayed recovery
+  window until a future explicit cleanup action is confirmed.
 - Historical evidence remains inspectable after the bytes are removed.
 - A future settings surface can project 30/90-day policy without changing the
   storage or execution boundary.
