@@ -84,7 +84,7 @@ function npcink_abilities_toolkit_count_plan_actions_for_ability( array $actions
 }
 
 function npcink_abilities_toolkit_cloud_artifact_fixture( array $overrides = array() ) {
-	return array_merge(
+	$artifact = array_merge(
 		array(
 			'artifact_id'        => 'art_ffffffffffffffffffffffffffffffff',
 			'expires_at'         => gmdate( 'c', time() + 600 ),
@@ -101,19 +101,40 @@ function npcink_abilities_toolkit_cloud_artifact_fixture( array $overrides = arr
 				'final_sanitize_unique_required' => true,
 			),
 			'processing_warnings' => array(),
-			'transform_facts' => array(
-				'source_checksum' => 'sha256:' . hash( 'sha256', 'source-fixture' ),
-				'output_checksum' => 'sha256:' . hash( 'sha256', 'cloud-artifact-fixture' ),
-				'encoding_mode' => 'lossy',
-				'source_width' => 1600,
-				'source_height' => 862,
-				'output_width' => 1600,
-				'output_height' => 862,
-				'alpha_preserved' => true,
-			),
 		),
 		$overrides
 	);
+	if ( ! array_key_exists( 'transform_facts', $overrides ) ) {
+		$source_filesize = 260000;
+		$output_filesize = (int) $artifact['filesize_bytes'];
+		$artifact['transform_facts'] = array(
+			'source_checksum' => 'sha256:' . hash( 'sha256', 'source-fixture' ),
+			'output_checksum' => 'sha256:' . (string) $artifact['sha256'],
+			'source_format' => 'jpeg',
+			'output_format' => (string) $artifact['format'],
+			'source_mime_type' => 'image/jpeg',
+			'output_mime_type' => (string) $artifact['mime_type'],
+			'source_width' => 1600,
+			'source_height' => 862,
+			'output_width' => (int) $artifact['width'],
+			'output_height' => (int) $artifact['height'],
+			'source_filesize_bytes' => $source_filesize,
+			'output_filesize_bytes' => $output_filesize,
+			'source_frame_count' => 1,
+			'output_frame_count' => 1,
+			'source_has_alpha' => false,
+			'output_has_alpha' => false,
+			'alpha_preserved' => true,
+			'decodable' => true,
+			'crop_applied' => false,
+			'watermark_applied' => false,
+			'resize_applied' => 1600 !== (int) $artifact['width'] || 862 !== (int) $artifact['height'],
+			'encoding_mode' => 'png' === $artifact['format'] ? 'lossless' : 'lossy',
+			'savings_basis_points' => max( 0, (int) ( ( $source_filesize - $output_filesize ) * 10000 / $source_filesize ) ),
+		);
+	}
+
+	return $artifact;
 }
 
 function npcink_abilities_toolkit_cloud_receive_fixture( array $artifact, $contents, array $overrides = array() ) {
@@ -1682,6 +1703,12 @@ npcink_abilities_toolkit_assert_same( false, $media_derivative_artifact_schema['
 npcink_abilities_toolkit_assert_same( array( 'owner', 'strategy', 'final_sanitize_unique_required' ), $media_derivative_artifact_schema['properties']['filename_basis']['required'] ?? array(), 'media optimization artifact schemas require the complete nested WordPress filename authority basis' );
 npcink_abilities_toolkit_assert_same( 26214400, $media_derivative_artifact_schema['properties']['filesize_bytes']['maximum'] ?? 0, 'media optimization artifact evidence stays within the shared 25 MiB local limit' );
 npcink_abilities_toolkit_assert_same( 8192, $media_derivative_artifact_schema['properties']['width']['maximum'] ?? 0, 'media optimization artifact schemas match the Cloud 8192-pixel axis limit' );
+$transform_facts_schema = $media_derivative_artifact_schema['properties']['transform_facts'] ?? array();
+npcink_abilities_toolkit_assert_same( array_keys( npcink_abilities_toolkit_cloud_artifact_fixture()['transform_facts'] ), $transform_facts_schema['required'] ?? array(), 'Cloud v2 transformation facts require the complete ordered fact set' );
+npcink_abilities_toolkit_assert_same( 'string', $transform_facts_schema['properties']['source_checksum']['type'] ?? '', 'Cloud v2 source checksums remain scalar strings in the WordPress ability schema' );
+npcink_abilities_toolkit_assert_same( 'integer', $transform_facts_schema['properties']['source_width']['type'] ?? '', 'Cloud v2 dimensions remain scalar integers in the WordPress ability schema' );
+npcink_abilities_toolkit_assert_same( 'boolean', $transform_facts_schema['properties']['decodable']['type'] ?? '', 'Cloud v2 decode evidence remains a scalar boolean in the WordPress ability schema' );
+npcink_abilities_toolkit_assert_same( false, $transform_facts_schema['additionalProperties'] ?? null, 'Cloud v2 transformation facts reject undeclared fields' );
 $cloud_adoption_output_schema = $package_abilities['npcink-abilities-toolkit/adopt-cloud-media-derivative']['output_schema']['properties'] ?? array();
 npcink_abilities_toolkit_assert_same( array( true ), $cloud_adoption_output_schema['transfer_evidence']['properties']['image_decoded']['enum'] ?? array(), 'verified transfer schemas expose image_decoded as true-only evidence using the supported enum keyword' );
 npcink_abilities_toolkit_assert_same( array( true ), $cloud_adoption_output_schema['delivery_ack']['properties']['checksum_verified']['enum'] ?? array(), 'delivery ACK schemas expose checksum_verified as true-only evidence using the supported enum keyword' );
@@ -4683,6 +4710,21 @@ $invalid_integrity_artifact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative
 	) )
 );
 npcink_abilities_toolkit_assert_true( is_wp_error( $invalid_integrity_artifact ) && 'npcink_abilities_toolkit_cloud_artifact_sha256_required' === $invalid_integrity_artifact->get_error_code(), 'shared derivative artifact contract rejects missing or malformed SHA-256 evidence' );
+$valid_transform_facts_artifact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize( npcink_abilities_toolkit_cloud_artifact_fixture() );
+npcink_abilities_toolkit_assert_true( ! is_wp_error( $valid_transform_facts_artifact ), 'shared derivative artifact contract accepts complete Cloud v2 scalar transformation facts' );
+npcink_abilities_toolkit_assert_same( npcink_abilities_toolkit_cloud_artifact_fixture()['transform_facts'], $valid_transform_facts_artifact['transform_facts'] ?? array(), 'shared derivative artifact normalization preserves Cloud v2 transformation facts' );
+$invalid_transform_fact_type = npcink_abilities_toolkit_cloud_artifact_fixture();
+$invalid_transform_fact_type['transform_facts']['source_checksum'] = array();
+$invalid_transform_fact_type = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize( $invalid_transform_fact_type );
+npcink_abilities_toolkit_assert_true( is_wp_error( $invalid_transform_fact_type ) && 'npcink_abilities_toolkit_cloud_artifact_transform_facts_checksum_invalid' === $invalid_transform_fact_type->get_error_code(), 'shared derivative artifact contract rejects non-scalar Cloud v2 checksum facts' );
+$unknown_transform_fact = npcink_abilities_toolkit_cloud_artifact_fixture();
+$unknown_transform_fact['transform_facts']['provider_detail'] = 'forbidden';
+$unknown_transform_fact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize( $unknown_transform_fact );
+npcink_abilities_toolkit_assert_true( is_wp_error( $unknown_transform_fact ) && 'npcink_abilities_toolkit_cloud_artifact_transform_facts_fields_invalid' === $unknown_transform_fact->get_error_code(), 'shared derivative artifact contract rejects undeclared Cloud v2 transformation facts' );
+$mismatched_transform_fact = npcink_abilities_toolkit_cloud_artifact_fixture();
+$mismatched_transform_fact['transform_facts']['output_width'] = 1599;
+$mismatched_transform_fact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize( $mismatched_transform_fact );
+npcink_abilities_toolkit_assert_true( is_wp_error( $mismatched_transform_fact ) && 'npcink_abilities_toolkit_cloud_artifact_transform_facts_output_mismatch' === $mismatched_transform_fact->get_error_code(), 'shared derivative artifact contract rejects transformation facts that disagree with the reviewed Artifact' );
 $relative_expiry_artifact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize(
 	npcink_abilities_toolkit_cloud_artifact_fixture( array(
 		'artifact_id'    => 'art_00000000000000000000000000000004',
