@@ -1033,6 +1033,14 @@ trait Media_Read_Methods {
 		}
 
 		$preferred_format = sanitize_key( (string) ( $input['preferred_format'] ?? 'webp' ) );
+		$optimization_mode = sanitize_key( (string) ( $input['optimization_mode'] ?? 'manual' ) );
+		if ( ! in_array( $optimization_mode, array( 'manual', 'auto_safe' ), true ) ) {
+			$optimization_mode = 'manual';
+		}
+		$auto_safe = 'auto_safe' === $optimization_mode;
+		if ( $auto_safe ) {
+			$preferred_format = 'webp';
+		}
 		if ( ! in_array( $preferred_format, array( 'webp', 'avif', 'jpeg', 'png', 'original' ), true ) ) {
 			$preferred_format = 'webp';
 		}
@@ -1047,27 +1055,41 @@ trait Media_Read_Methods {
 		);
 		$format_plan = is_array( $inspection['format_plan'] ?? null ) ? $inspection['format_plan'] : array();
 		$storage = is_array( $inspection['storage'] ?? null ) ? $inspection['storage'] : array();
+		$expected_fingerprint = strtolower( trim( (string) ( $input['expected_source_media_fingerprint'] ?? '' ) ) );
+		$current_sha256 = strtolower( (string) ( is_array( $inspection['content_hashes'] ?? null ) ? ( $inspection['content_hashes']['sha256'] ?? '' ) : '' ) );
+		if ( '' !== $expected_fingerprint && ( ! preg_match( '/^sha256:[0-9a-f]{64}$/', $expected_fingerprint ) || ! hash_equals( $expected_fingerprint, 'sha256:' . $current_sha256 ) ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_media_source_fingerprint_changed', __( 'The media file changed after the optimization list was frozen.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
+		}
 		$target_format = 'original' === $preferred_format
 			? sanitize_key( (string) ( $inspection['source_format'] ?? 'original' ) )
 			: $preferred_format;
 		$target_max_width = $this->absint_value( $format_plan['recommended_max_width'] ?? $input['target_max_width'] ?? 1920 );
+		$resize_mode = sanitize_key( (string) ( $input['resize_mode'] ?? ( $auto_safe ? 'preserve' : 'fit' ) ) );
+		if ( ! in_array( $resize_mode, array( 'fit', 'preserve' ), true ) ) {
+			$resize_mode = $auto_safe ? 'preserve' : 'fit';
+		}
+		if ( $auto_safe ) {
+			$target_max_width = 1920;
+		}
 		if ( $target_max_width <= 0 ) {
 			$target_max_width = 1920;
 		}
-		$watermark = $this->normalize_media_derivative_watermark( $input['watermark'] ?? array() );
+		$watermark = $this->normalize_media_derivative_watermark( $auto_safe ? array() : ( $input['watermark'] ?? array() ) );
 		if ( is_wp_error( $watermark ) ) {
 			return $watermark;
 		}
-		$crop = $this->normalize_media_derivative_crop( $input['crop'] ?? array() );
+		$crop = $this->normalize_media_derivative_crop( $auto_safe ? array() : ( $input['crop'] ?? array() ) );
 		if ( is_wp_error( $crop ) ) {
 			return $crop;
 		}
 
 		$cloud_job_payload = array(
 			'job_type'        => 'generate_optimized_media_derivative',
+			'optimization_mode' => $optimization_mode,
+			'optimization_profile' => $auto_safe ? 'auto_safe.v1' : 'manual',
 			'target_format'   => $target_format,
 			'max_width'       => max( 320, min( 7680, $target_max_width ) ),
-			'quality'         => $quality,
+			'resize_mode'     => $resize_mode,
 			'source_media_type' => 'image',
 			'source_asset'    => array(
 				'attachment_id'     => $attachment_id,
@@ -1082,15 +1104,21 @@ trait Media_Read_Methods {
 				'storage'           => $storage,
 			),
 			'requested_derivative' => array(
+				'mode'             => $optimization_mode,
+				'optimization_profile' => $auto_safe ? 'auto_safe.v1' : 'manual',
 				'format'           => $target_format,
 				'max_width'        => max( 320, min( 7680, $target_max_width ) ),
-				'quality'          => $quality,
+				'resize_mode'      => $resize_mode,
 				'preserve_original' => true,
 				'replace_original' => false,
 			),
 			'format_plan'     => $format_plan,
 			'warnings'        => is_array( $inspection['warnings'] ?? null ) ? array_values( array_map( 'sanitize_key', $inspection['warnings'] ) ) : array(),
 		);
+		if ( ! $auto_safe ) {
+			$cloud_job_payload['quality'] = $quality;
+			$cloud_job_payload['requested_derivative']['quality'] = $quality;
+		}
 		if ( ! empty( $watermark ) ) {
 			$cloud_job_payload['watermark'] = $watermark;
 		}
@@ -1154,42 +1182,25 @@ trait Media_Read_Methods {
 			return new \WP_Error( 'npcink_abilities_toolkit_permission_denied', __( 'You do not have permission to prepare media derivative batch plans.', 'npcink-abilities-toolkit' ), array( 'status' => 403 ) );
 		}
 
-	$target_format = sanitize_key( (string) ( $input['target_format'] ?? $input['preferred_format'] ?? 'webp' ) );
-	if ( ! in_array( $target_format, array( 'webp', 'avif', 'jpeg', 'png', 'original' ), true ) ) {
-		return new \WP_Error(
-			'npcink_abilities_toolkit_media_derivative_target_format_invalid',
-			__( 'Unsupported media derivative target format.', 'npcink-abilities-toolkit' ),
-			array( 'status' => 400 )
-		);
-	}
+		$target_format = 'webp';
+		$max_items = max( 1, min( 1000, $this->absint_value( $input['max_items'] ?? 1000 ) ) );
+		$page = max( 1, $this->absint_value( $input['page'] ?? 1 ) );
+		$mime_type = 'image';
+		$requested_formats = $this->normalize_media_derivative_format_list( $input['image_types'] ?? array( 'jpeg', 'png', 'webp' ) );
+		$requested_formats = array_values( array_intersect( $requested_formats, array( 'jpeg', 'png', 'webp' ) ) );
+		if ( empty( $requested_formats ) ) {
+			$requested_formats = array( 'jpeg', 'png', 'webp' );
+		}
+		$search = sanitize_text_field( (string) ( $input['search'] ?? '' ) );
+		$date_from = sanitize_text_field( (string) ( $input['date_from'] ?? '' ) );
+		$date_to = sanitize_text_field( (string) ( $input['date_to'] ?? '' ) );
+		$resize_mode = 'fit' === sanitize_key( (string) ( $input['resize_mode'] ?? 'preserve' ) ) ? 'fit' : 'preserve';
+		$target_max_width = 1920;
+		$large_file_threshold = max( 102400, min( 104857600, $this->absint_value( $input['large_file_threshold_bytes'] ?? 524288 ) ) );
 
-	$watermark = $this->normalize_media_derivative_watermark( $input['watermark'] ?? array() );
-	if ( is_wp_error( $watermark ) ) {
-		return $watermark;
-	}
-	$crop = $this->normalize_media_derivative_crop( $input['crop'] ?? array() );
-	if ( is_wp_error( $crop ) ) {
-		return $crop;
-	}
-
-	$max_items = max( 1, min( 50, $this->absint_value( $input['max_items'] ?? 20 ) ) );
-	$page = max( 1, $this->absint_value( $input['page'] ?? 1 ) );
-	$mime_type = sanitize_text_field( (string) ( $input['mime_type'] ?? 'image' ) );
-	$search = sanitize_text_field( (string) ( $input['search'] ?? '' ) );
-	$date_from = sanitize_text_field( (string) ( $input['date_from'] ?? '' ) );
-	$date_to = sanitize_text_field( (string) ( $input['date_to'] ?? '' ) );
-	$exclude_formats = $this->normalize_media_derivative_format_list( $input['exclude_formats'] ?? array() );
-	$target_max_width = max( 320, min( 7680, $this->absint_value( $input['target_max_width'] ?? 1920 ) ) );
-	$large_file_threshold = max( 102400, min( 104857600, $this->absint_value( $input['large_file_threshold_bytes'] ?? 524288 ) ) );
-	$quality = max( 1, min( 100, $this->absint_value( $input['quality'] ?? 82 ) ) );
-	$min_width = $this->absint_value( $input['min_width'] ?? 0 );
-	$min_height = $this->absint_value( $input['min_height'] ?? 0 );
-	$min_filesize_bytes = $this->absint_value( $input['min_filesize_bytes'] ?? 0 );
-	$max_filesize_bytes = $this->absint_value( $input['max_filesize_bytes'] ?? 0 );
-
-	$explicit_ids = is_array( $input['attachment_ids'] ?? null )
-		? array_slice( array_values( array_unique( array_filter( array_map( array( $this, 'absint_value' ), $input['attachment_ids'] ) ) ) ), 0, 100 )
-		: array();
+		$explicit_ids = is_array( $input['attachment_ids'] ?? null )
+			? array_slice( array_values( array_unique( array_filter( array_map( array( $this, 'absint_value' ), $input['attachment_ids'] ) ) ) ), 0, 1000 )
+			: array();
 	$query_result = array( 'attachment_ids' => $explicit_ids, 'total' => count( $explicit_ids ) );
 	if ( empty( $explicit_ids ) ) {
 		$query_result = $this->query_media_derivative_batch_inventory( $mime_type, $search, $date_from, $date_to, max( $max_items * 4, 50 ), $page );
@@ -1228,34 +1239,39 @@ trait Media_Read_Methods {
 		$skip_reason = $this->resolve_media_derivative_batch_skip_reason(
 			$inspection,
 			array(
-				'target_format'        => $target_format,
-				'exclude_formats'      => $exclude_formats,
-				'min_width'            => $min_width,
-				'min_height'           => $min_height,
-				'min_filesize_bytes'   => $min_filesize_bytes,
-				'max_filesize_bytes'   => $max_filesize_bytes,
-			)
-		);
-		if ( '' !== $skip_reason ) {
+					'target_format'        => $target_format,
+					'exclude_formats'      => array(),
+					'min_width'            => 0,
+					'min_height'           => 0,
+					'min_filesize_bytes'   => 0,
+					'max_filesize_bytes'   => 0,
+				)
+			);
+			if ( ! in_array( sanitize_key( (string) ( $inspection['source_format'] ?? '' ) ), $requested_formats, true ) ) {
+				$skip_reason = 'source_format_filtered';
+			}
+			if ( '' !== $skip_reason ) {
 			$skipped[] = $this->build_media_derivative_batch_skip_row( $attachment_id, $skip_reason, $inspection );
 			continue;
 		}
 
-		$cloud_request_input = array(
-			'attachment_id'              => $attachment_id,
-			'target_max_width'           => $target_max_width,
-			'large_file_threshold_bytes' => $large_file_threshold,
-			'preferred_format'           => $target_format,
-			'quality'                    => $quality,
-		);
-		if ( ! empty( $watermark ) ) {
-			$cloud_request_input['watermark'] = $watermark;
-		}
-		if ( ! empty( $crop ) ) {
-			$cloud_request_input['crop'] = $crop;
-		}
+			$cloud_request_input = array(
+				'attachment_id'              => $attachment_id,
+				'target_max_width'           => $target_max_width,
+				'large_file_threshold_bytes' => $large_file_threshold,
+				'preferred_format'           => 'webp',
+				'optimization_mode'           => 'auto_safe',
+				'optimization_profile'        => 'auto_safe.v1',
+				'resize_mode'                 => $resize_mode,
+			);
+			$content_hashes = is_array( $inspection['content_hashes'] ?? null ) ? $inspection['content_hashes'] : array();
+			$source_sha256 = strtolower( (string) ( $content_hashes['sha256'] ?? '' ) );
+			if ( ! preg_match( '/^[0-9a-f]{64}$/', $source_sha256 ) ) {
+				$skipped[] = $this->build_media_derivative_batch_skip_row( $attachment_id, 'source_fingerprint_unavailable', $inspection );
+				continue;
+			}
 
-		$candidates[] = array(
+			$candidates[] = array(
 			'attachment_id'          => $attachment_id,
 			'status'                 => 'eligible',
 			'reason'                 => 'eligible',
@@ -1267,21 +1283,23 @@ trait Media_Read_Methods {
 			'url'                    => $this->esc_url_value( (string) ( $inspection['url'] ?? '' ) ),
 			'width'                  => $this->absint_value( $inspection['width'] ?? 0 ),
 			'height'                 => $this->absint_value( $inspection['height'] ?? 0 ),
-			'filesize_bytes'         => $this->absint_value( $inspection['filesize_bytes'] ?? 0 ),
-			'storage'                => is_array( $inspection['storage'] ?? null ) ? $this->sanitize_media_storage_inspection( $inspection['storage'] ) : array(),
+				'filesize_bytes'         => $this->absint_value( $inspection['filesize_bytes'] ?? 0 ),
+				'media_fingerprint'      => 'sha256:' . $source_sha256,
+				'is_oversized'           => $this->absint_value( $inspection['width'] ?? 0 ) > 1920 || $this->absint_value( $inspection['height'] ?? 0 ) > 1920,
+				'storage'                => is_array( $inspection['storage'] ?? null ) ? $this->sanitize_media_storage_inspection( $inspection['storage'] ) : array(),
 			'warnings'               => is_array( $inspection['warnings'] ?? null ) ? array_values( array_map( 'sanitize_key', $inspection['warnings'] ) ) : array(),
 			'cloud_request_ability'  => 'npcink-abilities-toolkit/build-media-derivative-cloud-request',
 			'cloud_request_input'    => $cloud_request_input,
-			'proposal_required'      => true,
-			'preview_required'       => true,
-		);
+				'proposal_required'      => false,
+				'preview_required'       => true,
+			);
 	}
 
 	$total = $this->absint_value( $query_result['total'] ?? count( $attachment_ids ) );
 	$truncated = count( $candidates ) >= $max_items && $total > $scanned_count;
 	$blocked_items = $this->build_media_derivative_batch_blocked_items( $skipped );
-	$operator_next_action = ! empty( $candidates )
-		? 'Review eligible media, generate selected previews, then submit selected Core reviews.'
+		$operator_next_action = ! empty( $candidates )
+			? 'Review representative samples, then confirm the frozen manifest once before foreground execution.'
 		: ( ! empty( $blocked_items ) ? 'Review blocked reasons or adjust filters, then rebuild the plan.' : 'Adjust media scope or filters, then rebuild the plan.' );
 	$retry_guidance = ! empty( $candidates )
 		? 'Change selected media or rebuild the plan after adjusting filters before generating previews again.'
@@ -1289,27 +1307,23 @@ trait Media_Read_Methods {
 
 	return $this->build_analysis_success_response(
 		array(
-			'plan_contract_version' => 'media_derivative_batch_plan.v1',
+				'plan_contract_version' => 'toolbox_media_optimization_manifest.v1',
 			'readonly'              => true,
 			'plan_mode'             => 'dry_run',
 			'requires_approval'     => true,
 			'commit_execution'      => false,
 			'filters'               => array(
-				'mime_type'                  => $mime_type,
+					'mime_type'                  => $mime_type,
+					'image_types'                => $requested_formats,
 				'search'                     => $search,
 				'date_from'                  => $date_from,
 				'date_to'                    => $date_to,
 				'target_format'              => $target_format,
-				'exclude_formats'            => $exclude_formats,
-				'target_max_width'           => $target_max_width,
-				'large_file_threshold_bytes' => $large_file_threshold,
-				'quality'                    => $quality,
-				'crop'                       => $crop,
-				'min_width'                  => $min_width,
-				'min_height'                 => $min_height,
-				'min_filesize_bytes'         => $min_filesize_bytes,
-				'max_filesize_bytes'         => $max_filesize_bytes,
-				'max_items'                  => $max_items,
+					'target_max_width'           => $target_max_width,
+					'resize_mode'                => $resize_mode,
+					'optimization_profile'       => 'auto_safe.v1',
+					'large_file_threshold_bytes' => $large_file_threshold,
+					'max_items'                  => $max_items,
 				'page'                       => $page,
 			),
 			'summary'               => array(
@@ -1317,8 +1331,10 @@ trait Media_Read_Methods {
 				'scanned_count'       => $scanned_count,
 				'candidate_count'     => count( $candidates ),
 				'skipped_count'       => count( $skipped ),
-				'truncated'           => $truncated,
-				'cloud_calls_included' => false,
+					'truncated'           => $truncated,
+					'oversized_count'     => count( array_filter( $candidates, static fn( $candidate ) => ! empty( $candidate['is_oversized'] ) ) ),
+					'next_batch_suggested' => $truncated,
+					'cloud_calls_included' => false,
 			),
 			'eligibility_summary'   => array(
 				'total_count'          => $total,
@@ -1339,14 +1355,13 @@ trait Media_Read_Methods {
 			'operator_next_action'  => $operator_next_action,
 			'execution_plan'        => array(
 				'steps' => array(
-					'Review candidates and skipped reasons.',
-					'For each reviewed candidate, call npcink-abilities-toolkit/build-media-derivative-cloud-request, then let the consuming product dispatch the validated request through its Cloud connector; signed Cloud transport and result reads stay behind that connector, and preview does not write WordPress.',
-					'Preview non-expired derivative artifacts through the local same-origin preview route.',
-					'Submit Core proposal payloads for npcink-abilities-toolkit/adopt-cloud-media-derivative only after review.',
-					'Approve and execute through Core; run reference repair planning when hard-coded URLs or settings references remain.',
+					'Review representative auto-safe previews without changing WordPress.',
+					'Freeze attachment ids and source SHA-256 fingerprints in one exact manifest.',
+					'After one present-admin confirmation, process pending items in the browser foreground through the existing Toolkit write ability.',
+					'Stop when the browser closes; on reopen, resume only after another explicit user action.',
 				),
-				'batch_size_recommendation' => min( $max_items, 20 ),
-				'proposal_strategy'         => 'small_reviewed_batches',
+				'batch_size_recommendation' => 10,
+				'proposal_strategy'         => 'exact_manifest_strong_confirmation',
 			),
 			'boundary'              => array(
 				'owner'                    => 'local_wordpress_host',
@@ -2643,7 +2658,7 @@ trait Media_Read_Methods {
 		$args = array(
 			'post_type'      => 'attachment',
 			'post_status'    => 'inherit',
-			'posts_per_page' => max( 1, min( 200, $this->absint_value( $per_page ) ) ),
+			'posts_per_page' => max( 1, min( 1000, $this->absint_value( $per_page ) ) ),
 			'paged'          => max( 1, $this->absint_value( $page ) ),
 			'orderby'        => 'date',
 			'order'          => 'DESC',

@@ -841,7 +841,19 @@ if ( ! function_exists( 'get_posts' ) ) {
 			);
 		}
 		$limit = isset( $args['posts_per_page'] ) ? max( 1, (int) $args['posts_per_page'] ) : count( $posts );
-		return array_slice( $posts, 0, $limit );
+		$page = isset( $args['paged'] ) ? max( 1, (int) $args['paged'] ) : 1;
+		$posts = array_slice( $posts, ( $page - 1 ) * $limit, $limit );
+		if ( 'ids' === (string) ( $args['fields'] ?? '' ) ) {
+			return array_values(
+				array_map(
+					static function ( $post ) {
+						return is_object( $post ) ? (int) ( $post->ID ?? 0 ) : (int) $post;
+					},
+					$posts
+				)
+			);
+		}
+		return $posts;
 	}
 }
 

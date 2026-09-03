@@ -131,6 +131,15 @@ function npcink_abilities_toolkit_cloud_artifact_fixture( array $overrides = arr
 			'resize_applied' => 1600 !== (int) $artifact['width'] || 862 !== (int) $artifact['height'],
 			'encoding_mode' => 'png' === $artifact['format'] ? 'lossless' : 'lossy',
 			'savings_basis_points' => max( 0, (int) ( ( $source_filesize - $output_filesize ) * 10000 / $source_filesize ) ),
+			'optimization_profile' => 'auto_safe.v1',
+			'source_class' => 'opaque',
+			'effective_quality' => 82,
+			'quality_metric' => 'ssim',
+			'quality_score' => 0.99,
+			'quality_threshold' => 0.985,
+			'color_profile_normalized' => false,
+			'qualified' => true,
+			'decision_reasons' => array( 'qualified' ),
 		);
 	}
 
@@ -1698,13 +1707,13 @@ npcink_abilities_toolkit_assert_true( isset( $package_abilities['npcink-abilitie
 npcink_abilities_toolkit_assert_same( array( 'media.read' ), $package_abilities['npcink-abilities-toolkit/build-media-optimization-plan']['required_scopes'] ?? array(), 'media optimization plan remains a read-scope planning ability' );
 npcink_abilities_toolkit_assert_same( array( 'attachment_id', 'media_details_input', 'derivative_artifact' ), $package_abilities['npcink-abilities-toolkit/build-media-optimization-plan']['input_schema']['required'] ?? array(), 'media optimization plan requires metadata and artifact evidence' );
 $media_derivative_artifact_schema = $package_abilities['npcink-abilities-toolkit/build-media-optimization-plan']['input_schema']['properties']['derivative_artifact'] ?? array();
-npcink_abilities_toolkit_assert_same( array( 'artifact_id', 'expires_at', 'mime_type', 'format', 'width', 'height', 'filesize_bytes', 'sha256', 'suggested_filename', 'filename_basis', 'processing_warnings', 'transform_facts' ), $media_derivative_artifact_schema['required'] ?? array(), 'media optimization artifacts require the exact v2 local proposal descriptor' );
+npcink_abilities_toolkit_assert_same( array( 'artifact_id', 'expires_at', 'mime_type', 'format', 'width', 'height', 'filesize_bytes', 'sha256', 'suggested_filename', 'filename_basis', 'processing_warnings', 'transform_facts' ), $media_derivative_artifact_schema['required'] ?? array(), 'media optimization artifacts require the exact v3 local proposal descriptor' );
 npcink_abilities_toolkit_assert_same( false, $media_derivative_artifact_schema['additionalProperties'] ?? null, 'media optimization artifacts reject undeclared descriptor fields at the public ability boundary' );
 npcink_abilities_toolkit_assert_same( array( 'owner', 'strategy', 'final_sanitize_unique_required' ), $media_derivative_artifact_schema['properties']['filename_basis']['required'] ?? array(), 'media optimization artifact schemas require the complete nested WordPress filename authority basis' );
 npcink_abilities_toolkit_assert_same( 26214400, $media_derivative_artifact_schema['properties']['filesize_bytes']['maximum'] ?? 0, 'media optimization artifact evidence stays within the shared 25 MiB local limit' );
 npcink_abilities_toolkit_assert_same( 8192, $media_derivative_artifact_schema['properties']['width']['maximum'] ?? 0, 'media optimization artifact schemas match the Cloud 8192-pixel axis limit' );
 $transform_facts_schema = $media_derivative_artifact_schema['properties']['transform_facts'] ?? array();
-npcink_abilities_toolkit_assert_same( array_keys( npcink_abilities_toolkit_cloud_artifact_fixture()['transform_facts'] ), $transform_facts_schema['required'] ?? array(), 'Cloud v2 transformation facts require the complete ordered fact set' );
+npcink_abilities_toolkit_assert_same( array_keys( npcink_abilities_toolkit_cloud_artifact_fixture()['transform_facts'] ), $transform_facts_schema['required'] ?? array(), 'Cloud v3 transformation facts require the complete ordered fact set' );
 npcink_abilities_toolkit_assert_same( 'string', $transform_facts_schema['properties']['source_checksum']['type'] ?? '', 'Cloud v2 source checksums remain scalar strings in the WordPress ability schema' );
 npcink_abilities_toolkit_assert_same( 'integer', $transform_facts_schema['properties']['source_width']['type'] ?? '', 'Cloud v2 dimensions remain scalar integers in the WordPress ability schema' );
 npcink_abilities_toolkit_assert_same( 'boolean', $transform_facts_schema['properties']['decodable']['type'] ?? '', 'Cloud v2 decode evidence remains a scalar boolean in the WordPress ability schema' );
@@ -2065,9 +2074,11 @@ npcink_abilities_toolkit_assert_same( 'AI', $package_abilities['npcink-abilities
 npcink_abilities_toolkit_assert_same( 48, $package_abilities['npcink-abilities-toolkit/build-media-derivative-cloud-request']['input_schema']['properties']['watermark']['properties']['font_size']['default'] ?? null, 'media derivative cloud request defaults text watermark font size' );
 npcink_abilities_toolkit_assert_true( isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan'] ), 'media derivative batch plan is registered as a read-only planning ability' );
 npcink_abilities_toolkit_assert_same( array( 'media.read' ), $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['required_scopes'] ?? array(), 'media derivative batch plan remains a read-scope planning ability' );
-npcink_abilities_toolkit_assert_same( array( 'webp', 'avif', 'jpeg', 'png', 'original' ), $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['target_format']['enum'] ?? array(), 'media derivative batch plan exposes bounded target formats' );
-npcink_abilities_toolkit_assert_same( array( 'aspect_ratio' ), $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['crop']['properties']['type']['enum'] ?? array(), 'media derivative batch plan supports bounded aspect-ratio crop plans' );
-npcink_abilities_toolkit_assert_same( 50, $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['max_items']['maximum'] ?? null, 'media derivative batch plan bounds candidates to 50 items' );
+npcink_abilities_toolkit_assert_same( array( 'auto_safe' ), $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['optimization_mode']['enum'] ?? array(), 'media derivative batch plan exposes only the auto-safe mode' );
+npcink_abilities_toolkit_assert_same( array( 'auto_safe.v1' ), $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['optimization_profile']['enum'] ?? array(), 'media derivative batch plan pins the automatic policy version' );
+npcink_abilities_toolkit_assert_same( array( 'jpeg', 'png', 'webp' ), $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['image_types']['items']['enum'] ?? array(), 'media derivative batch plan exposes only supported static image types' );
+npcink_abilities_toolkit_assert_true( ! isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['target_format'] ) && ! isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['crop'] ) && ! isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['watermark'] ), 'media derivative batch plan keeps manual format, crop, and watermark controls out of one-click input' );
+npcink_abilities_toolkit_assert_same( 1000, $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['input_schema']['properties']['max_items']['maximum'] ?? null, 'media derivative batch plan bounds candidates to 1000 items' );
 npcink_abilities_toolkit_assert_true( isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['output_schema']['properties']['data']['properties']['eligibility_summary'] ), 'media derivative batch plan declares eligibility summary output' );
 npcink_abilities_toolkit_assert_true( isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['output_schema']['properties']['data']['properties']['blocked_items'] ), 'media derivative batch plan declares blocked items output' );
 npcink_abilities_toolkit_assert_true( isset( $package_abilities['npcink-abilities-toolkit/build-media-derivative-batch-plan']['output_schema']['properties']['data']['properties']['retry_guidance'] ), 'media derivative batch plan declares retry guidance output' );
@@ -4711,8 +4722,8 @@ $invalid_integrity_artifact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative
 );
 npcink_abilities_toolkit_assert_true( is_wp_error( $invalid_integrity_artifact ) && 'npcink_abilities_toolkit_cloud_artifact_sha256_required' === $invalid_integrity_artifact->get_error_code(), 'shared derivative artifact contract rejects missing or malformed SHA-256 evidence' );
 $valid_transform_facts_artifact = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize( npcink_abilities_toolkit_cloud_artifact_fixture() );
-npcink_abilities_toolkit_assert_true( ! is_wp_error( $valid_transform_facts_artifact ), 'shared derivative artifact contract accepts complete Cloud v2 scalar transformation facts' );
-npcink_abilities_toolkit_assert_same( npcink_abilities_toolkit_cloud_artifact_fixture()['transform_facts'], $valid_transform_facts_artifact['transform_facts'] ?? array(), 'shared derivative artifact normalization preserves Cloud v2 transformation facts' );
+npcink_abilities_toolkit_assert_true( ! is_wp_error( $valid_transform_facts_artifact ), 'shared derivative artifact contract accepts complete Cloud v3 scalar transformation facts' );
+npcink_abilities_toolkit_assert_same( npcink_abilities_toolkit_cloud_artifact_fixture()['transform_facts'], $valid_transform_facts_artifact['transform_facts'] ?? array(), 'shared derivative artifact normalization preserves Cloud v3 transformation facts' );
 $invalid_transform_fact_type = npcink_abilities_toolkit_cloud_artifact_fixture();
 $invalid_transform_fact_type['transform_facts']['source_checksum'] = array();
 $invalid_transform_fact_type = \Npcink_Abilities_Toolkit\Support\Cloud_Derivative_Artifact::normalize( $invalid_transform_fact_type );
@@ -5255,12 +5266,25 @@ update_post_meta(
 	)
 );
 update_post_meta( 86, '_wp_attached_file', '2026/05/may-campaign-jpeg.jpg' );
+$batch_media_files = array(
+	84 => array( '2026/04/april-campaign-jpeg.jpg', 'april-jpeg-bytes' ),
+	85 => array( '2026/04/april-existing-png.png', 'april-png-bytes' ),
+	86 => array( '2026/05/may-campaign-jpeg.jpg', 'may-jpeg-bytes' ),
+);
+foreach ( $batch_media_files as $batch_attachment_id => $batch_media_file ) {
+	$batch_media_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/' . $batch_media_file[0];
+	if ( ! is_dir( dirname( $batch_media_path ) ) ) {
+		mkdir( dirname( $batch_media_path ), 0755, true );
+	}
+	file_put_contents( $batch_media_path, $batch_media_file[1] );
+	update_post_meta( $batch_attachment_id, '_wp_attached_file', $batch_media_path );
+}
 $media_derivative_batch_plan = $core_read_package->build_media_derivative_batch_plan(
 	array(
-		'date_from'     => '2026-04-01',
-		'date_to'       => '2026-04-30 23:59:59',
-		'target_format' => 'png',
-		'max_items'     => 10,
+		'date_from'  => '2026-04-01',
+		'date_to'    => '2026-04-30 23:59:59',
+		'image_types' => array( 'jpeg' ),
+		'max_items'  => 10,
 	)
 );
 npcink_abilities_toolkit_assert_same( true, $media_derivative_batch_plan['success'] ?? null, 'media derivative batch plan returns a success envelope' );
@@ -5268,70 +5292,43 @@ npcink_abilities_toolkit_assert_same( true, $media_derivative_batch_plan['data']
 npcink_abilities_toolkit_assert_same( 'dry_run', $media_derivative_batch_plan['data']['plan_mode'] ?? '', 'media derivative batch plan returns a dry-run plan mode' );
 npcink_abilities_toolkit_assert_same( false, $media_derivative_batch_plan['data']['commit_execution'] ?? null, 'media derivative batch plan does not execute commits' );
 npcink_abilities_toolkit_assert_same( true, $media_derivative_batch_plan['data']['requires_approval'] ?? null, 'media derivative batch plan requires approval before adoption' );
-npcink_abilities_toolkit_assert_same( 1, $media_derivative_batch_plan['data']['summary']['candidate_count'] ?? 0, 'media derivative batch plan selects one April JPEG candidate for PNG conversion' );
+npcink_abilities_toolkit_assert_same( 'toolbox_media_optimization_manifest.v1', $media_derivative_batch_plan['data']['plan_contract_version'] ?? '', 'media derivative batch plan emits the exact one-click optimization manifest contract' );
+npcink_abilities_toolkit_assert_same( 1, $media_derivative_batch_plan['data']['summary']['candidate_count'] ?? 0, 'media derivative batch plan selects one April JPEG candidate from the requested types' );
 npcink_abilities_toolkit_assert_same( 1, $media_derivative_batch_plan['data']['eligibility_summary']['eligible_count'] ?? 0, 'media derivative batch plan reports eligible count in eligibility summary' );
-npcink_abilities_toolkit_assert_same( 1, $media_derivative_batch_plan['data']['eligibility_summary']['blocked_count'] ?? 0, 'media derivative batch plan reports blocked count in eligibility summary' );
+npcink_abilities_toolkit_assert_same( 1, $media_derivative_batch_plan['data']['eligibility_summary']['blocked_count'] ?? 0, 'media derivative batch plan reports the filtered PNG in the eligibility summary' );
 npcink_abilities_toolkit_assert_same( true, $media_derivative_batch_plan['data']['retryable'] ?? null, 'media derivative batch plan is retryable as a rebuildable review set' );
 npcink_abilities_toolkit_assert_true( is_string( $media_derivative_batch_plan['data']['operator_next_action'] ?? null ) && '' !== $media_derivative_batch_plan['data']['operator_next_action'], 'media derivative batch plan provides operator next action guidance' );
 npcink_abilities_toolkit_assert_same( 84, $media_derivative_batch_plan['data']['candidates'][0]['attachment_id'] ?? 0, 'media derivative batch plan candidate comes from the April date range' );
 npcink_abilities_toolkit_assert_same( 'eligible', $media_derivative_batch_plan['data']['candidates'][0]['status'] ?? '', 'media derivative batch plan candidate carries eligible status' );
 npcink_abilities_toolkit_assert_same( 'attachment:84', $media_derivative_batch_plan['data']['candidates'][0]['result_ref'] ?? '', 'media derivative batch plan candidate carries a stable result reference' );
-npcink_abilities_toolkit_assert_same( 'png', $media_derivative_batch_plan['data']['candidates'][0]['cloud_request_input']['preferred_format'] ?? '', 'media derivative batch plan prepares PNG single-image request input' );
+npcink_abilities_toolkit_assert_same( 'webp', $media_derivative_batch_plan['data']['candidates'][0]['cloud_request_input']['preferred_format'] ?? '', 'media derivative batch plan fixes one-click output to WebP' );
+npcink_abilities_toolkit_assert_same( 'auto_safe', $media_derivative_batch_plan['data']['candidates'][0]['cloud_request_input']['optimization_mode'] ?? '', 'media derivative batch plan uses the Cloud auto-safe mode' );
+npcink_abilities_toolkit_assert_same( 'auto_safe.v1', $media_derivative_batch_plan['data']['candidates'][0]['cloud_request_input']['optimization_profile'] ?? '', 'media derivative batch plan pins the auto-safe policy version' );
+npcink_abilities_toolkit_assert_same( 'sha256:' . hash( 'sha256', 'april-jpeg-bytes' ), $media_derivative_batch_plan['data']['candidates'][0]['media_fingerprint'] ?? '', 'media derivative batch plan freezes the current file SHA-256' );
+npcink_abilities_toolkit_assert_array_omits_keys( $media_derivative_batch_plan['data']['candidates'][0]['cloud_request_input'] ?? array(), array( 'quality', 'crop', 'watermark' ), 'media derivative batch auto-safe request input' );
 npcink_abilities_toolkit_assert_same( 'npcink-abilities-toolkit/build-media-derivative-cloud-request', $media_derivative_batch_plan['data']['candidates'][0]['cloud_request_ability'] ?? '', 'media derivative batch plan points to the existing single-image cloud request ability' );
 $media_derivative_execution_plan = implode( ' ', (array) ( $media_derivative_batch_plan['data']['execution_plan']['steps'] ?? array() ) );
-npcink_abilities_toolkit_assert_true( false !== strpos( $media_derivative_execution_plan, 'npcink-abilities-toolkit/build-media-derivative-cloud-request' ) && false !== strpos( $media_derivative_execution_plan, 'consuming product' ) && false !== strpos( $media_derivative_execution_plan, 'Cloud connector' ), 'media derivative batch plan delegates validated requests to the consuming product connector without coupling Toolkit to one access channel' );
+npcink_abilities_toolkit_assert_true( false !== strpos( $media_derivative_execution_plan, 'source SHA-256 fingerprints' ) && false !== strpos( $media_derivative_execution_plan, 'browser foreground' ), 'media derivative batch plan freezes file versions and remains foreground-driven' );
 npcink_abilities_toolkit_assert_true( false === strpos( $media_derivative_execution_plan, 'media-derivative-runs' ) && false === strpos( $media_derivative_execution_plan, 'media-derivative-proposal-payload' ) && false === strpos( $media_derivative_execution_plan, 'Adapter POST' ), 'media derivative batch plan omits retired Adapter execution seams' );
-npcink_abilities_toolkit_assert_same( 'already_target_format', $media_derivative_batch_plan['data']['skipped'][0]['reason'] ?? '', 'media derivative batch plan skips images already in the target format' );
-npcink_abilities_toolkit_assert_same( 'already_target_format', $media_derivative_batch_plan['data']['blocked_items'][0]['blocked_reason'] ?? '', 'media derivative batch plan exposes skipped media as blocked items' );
+npcink_abilities_toolkit_assert_same( 'source_format_filtered', $media_derivative_batch_plan['data']['skipped'][0]['reason'] ?? '', 'media derivative batch plan explains image type filtering' );
+npcink_abilities_toolkit_assert_same( 'source_format_filtered', $media_derivative_batch_plan['data']['blocked_items'][0]['blocked_reason'] ?? '', 'media derivative batch plan exposes filtered media as blocked items' );
+npcink_abilities_toolkit_assert_same( 10, $media_derivative_batch_plan['data']['execution_plan']['batch_size_recommendation'] ?? 0, 'media derivative batch plan recommends ten-item execution chunks' );
 npcink_abilities_toolkit_assert_array_omits_keys( $media_derivative_batch_plan['data'], array( 'write_actions', 'wordpress_write_decision', 'approval_decision', 'commit' ), 'media derivative batch plan output' );
 $media_derivative_batch_plan_bounded = $core_read_package->build_media_derivative_batch_plan(
 	array(
 		'attachment_ids' => array( 84, 86 ),
-		'target_format'  => 'png',
 		'max_items'      => 1,
 	)
 );
 npcink_abilities_toolkit_assert_same( 1, $media_derivative_batch_plan_bounded['data']['summary']['candidate_count'] ?? 0, 'media derivative batch plan enforces max_items' );
-$media_derivative_batch_plan_text_watermark = $core_read_package->build_media_derivative_batch_plan(
+$media_derivative_batch_plan_resize = $core_read_package->build_media_derivative_batch_plan(
 	array(
 		'attachment_ids' => array( 84 ),
-		'target_format'  => 'webp',
-		'max_items'      => 1,
-		'crop'           => array(
-			'type'         => 'aspect_ratio',
-			'aspect_ratio' => '1:1',
-			'position'     => 'top',
-		),
-		'watermark'      => array(
-			'type'     => 'text',
-			'text'     => 'AI',
-			'position' => 'top_right',
-		),
+		'resize_mode'    => 'fit',
 	)
 );
-npcink_abilities_toolkit_assert_same( true, $media_derivative_batch_plan_text_watermark['success'] ?? null, 'media derivative batch plan accepts text watermark input' );
-npcink_abilities_toolkit_assert_same( '1:1', $media_derivative_batch_plan_text_watermark['data']['candidates'][0]['cloud_request_input']['crop']['aspect_ratio'] ?? '', 'media derivative batch plan carries crop requests into candidate cloud inputs' );
-npcink_abilities_toolkit_assert_same( 'top', $media_derivative_batch_plan_text_watermark['data']['filters']['crop']['position'] ?? '', 'media derivative batch plan records crop intent in reviewable filters' );
-npcink_abilities_toolkit_assert_same( 'text', $media_derivative_batch_plan_text_watermark['data']['candidates'][0]['cloud_request_input']['watermark']['type'] ?? '', 'media derivative batch plan carries text watermark requests into candidate cloud inputs' );
-npcink_abilities_toolkit_assert_same( 'AI', $media_derivative_batch_plan_text_watermark['data']['candidates'][0]['cloud_request_input']['watermark']['text'] ?? '', 'media derivative batch plan carries text watermark content into candidate cloud inputs' );
-npcink_abilities_toolkit_assert_true( ! isset( $media_derivative_batch_plan_text_watermark['data']['candidates'][0]['cloud_request_input']['watermark']['artifact_id'] ), 'media derivative batch plan text watermark does not require an artifact id' );
-$media_derivative_batch_plan_excluded = $core_read_package->build_media_derivative_batch_plan(
-	array(
-		'attachment_ids'    => array( 84 ),
-		'target_format'     => 'png',
-		'exclude_formats'   => array( 'jpeg' ),
-	)
-);
-npcink_abilities_toolkit_assert_same( 0, $media_derivative_batch_plan_excluded['data']['summary']['candidate_count'] ?? 1, 'media derivative batch plan honors excluded source formats' );
-npcink_abilities_toolkit_assert_same( 'source_format_excluded', $media_derivative_batch_plan_excluded['data']['skipped'][0]['reason'] ?? '', 'media derivative batch plan explains excluded source formats' );
-npcink_abilities_toolkit_assert_same( 'source_format_excluded', $media_derivative_batch_plan_excluded['data']['blocked_items'][0]['blocked_reason'] ?? '', 'media derivative batch plan exposes excluded source formats as blocked items' );
-$media_derivative_batch_plan_invalid = $core_read_package->build_media_derivative_batch_plan(
-	array(
-		'attachment_ids' => array( 84 ),
-		'target_format'  => 'tiff',
-	)
-);
-npcink_abilities_toolkit_assert_true( is_wp_error( $media_derivative_batch_plan_invalid ) && 'npcink_abilities_toolkit_media_derivative_target_format_invalid' === $media_derivative_batch_plan_invalid->get_error_code(), 'media derivative batch plan rejects invalid target formats' );
+npcink_abilities_toolkit_assert_same( 'fit', $media_derivative_batch_plan_resize['data']['filters']['resize_mode'] ?? '', 'media derivative batch plan records the optional 1920-pixel resize choice' );
+npcink_abilities_toolkit_assert_same( 'fit', $media_derivative_batch_plan_resize['data']['candidates'][0]['cloud_request_input']['resize_mode'] ?? '', 'media derivative batch plan carries the optional resize choice to Cloud' );
 $media_optimization_preview = $core_write_package->optimize_media_asset(
 	array(
 		'attachment_id'     => 79,
@@ -6144,6 +6141,9 @@ $cloud_adoption_commit = $core_write_package->adopt_cloud_media_derivative(
 		'expected_content_reference_post_ids' => $cloud_adoption_expected_post_ids,
 		'expected_content_reference_post_count' => $cloud_adoption_expected_post_count,
 		'expected_content_reference_replacement_count' => $cloud_adoption_expected_replacement_count,
+		'batch_id'                     => 'media_optimization_retention_test',
+		'optimization_profile'         => 'auto_safe.v1',
+		'batch_confirmation_digest'    => 'sha256:' . str_repeat( 'a', 64 ),
 		'commit'                       => true,
 	)
 );
@@ -6160,6 +6160,7 @@ npcink_abilities_toolkit_assert_same( '2026/06/customer-approved-diagram.webp', 
 $cloud_adoption_latest_history = get_post_meta( 79, '_npcink_ai_media_latest_file_replacement', true );
 npcink_abilities_toolkit_assert_true( 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $cloud_adoption_latest_history['new_media_fingerprint'] ?? '' ) ) && 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $cloud_adoption_latest_history['derived_from_media_fingerprint'] ?? '' ) ), 'adopt-cloud-media-derivative records canonical source and target fingerprints in replacement lineage' );
 npcink_abilities_toolkit_assert_true( in_array( (string) ( $cloud_adoption_latest_history['visual_reuse_policy'] ?? '' ), array( 'reuse', 'reuse_with_human_check', 'requires_reidentification' ), true ) && is_array( $cloud_adoption_latest_history['transform_facts'] ?? null ), 'adopt-cloud-media-derivative records transform facts and a bounded visual reuse policy' );
+npcink_abilities_toolkit_assert_same( 'manual_confirmation_required', $cloud_adoption_latest_history['backup_cleanup_policy'] ?? '', 'exact-manifest media optimization keeps its backup until explicit cleanup confirmation' );
 npcink_abilities_toolkit_assert_true( $cloud_lifecycle_hooks['post_updated'] >= 2 && $cloud_lifecycle_hooks['save_post'] >= 2 && $cloud_lifecycle_hooks['wp_after_insert_post'] >= 2, 'Cloud MIME and post-content writes retain the WordPress update lifecycle while each row lock is held' );
 npcink_abilities_toolkit_assert_same( 1, $cloud_adoption_commit['content_reference_repairs']['updated_count'] ?? 0, 'adopt-cloud-media-derivative commit updates posts that embed the attachment URL' );
 npcink_abilities_toolkit_assert_same( '2026/06/customer-approved-diagram.webp', $cloud_adoption_commit['verification']['media_current_file'] ?? '', 'adopt-cloud-media-derivative verification reports current media file' );
@@ -6281,6 +6282,7 @@ update_post_meta(
 			'status'             => 'active',
 			'replaced_at_gmt'    => '2026-06-02T00:00:00+00:00',
 			'rolled_back_at_gmt' => '',
+			'backup_cleanup_policy' => 'manual_confirmation_required',
 			'before'             => array(
 				'relative_file' => '2026/06/workflow-diagram-image.jpg',
 				'mime_type'     => 'image/jpeg',
@@ -6615,7 +6617,47 @@ npcink_abilities_toolkit_assert_same( 'active', $media_restore_success_latest['s
 npcink_abilities_toolkit_assert_same( 'media_replace_unit', $media_restore_success_latest['restored_from'] ?? '', 'restore-media-backup success links the restore record to its selected backup' );
 npcink_abilities_toolkit_assert_true( 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $media_restore_success_latest['new_media_fingerprint'] ?? '' ) ) && 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $media_restore_success_latest['derived_from_media_fingerprint'] ?? '' ) ), 'restore-media-backup success records canonical source and target fingerprints in restore lineage' );
 npcink_abilities_toolkit_assert_same( 'requires_reidentification', $media_restore_success_latest['visual_reuse_policy'] ?? '', 'restore-media-backup marks restored media as requiring fresh visual identification' );
+npcink_abilities_toolkit_assert_same( 'manual_confirmation_required', $media_restore_success_latest['backup_cleanup_policy'] ?? '', 'restore history inherits the exact-manifest manual cleanup policy' );
 npcink_abilities_toolkit_assert_same( $restore_compensation_before, glob( $restore_compensation_pattern ), 'restore-media-backup success removes its transient overwrite compensation file' );
+
+$manual_retention_relative = 'npcink-abilities-toolkit-backups/2026/06/manual-retention.jpg';
+$automatic_retention_relative = 'npcink-abilities-toolkit-backups/2026/06/automatic-retention.jpg';
+$manual_retention_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/' . $manual_retention_relative;
+$automatic_retention_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/' . $automatic_retention_relative;
+file_put_contents( $manual_retention_path, 'manual-retention-bytes' );
+file_put_contents( $automatic_retention_path, 'automatic-retention-bytes' );
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][790] = (object) array(
+	'ID'             => 790,
+	'post_type'      => 'attachment',
+	'post_status'    => 'inherit',
+	'post_mime_type' => 'image/jpeg',
+);
+update_post_meta(
+	790,
+	'_npcink_ai_media_file_replacement_history',
+	array(
+		array(
+			'replacement_id'       => 'manual-retention',
+			'status'               => 'active',
+			'replaced_at_gmt'      => gmdate( 'c', time() - ( 31 * 86400 ) ),
+			'backup_cleanup_policy' => 'manual_confirmation_required',
+			'backup'               => array( 'relative_file' => $manual_retention_relative, 'file_exists' => true ),
+		),
+		array(
+			'replacement_id'  => 'automatic-retention',
+			'status'          => 'active',
+			'replaced_at_gmt' => gmdate( 'c', time() - ( 31 * 86400 ) ),
+			'backup'          => array( 'relative_file' => $automatic_retention_relative, 'file_exists' => true ),
+		),
+	)
+);
+$media_backup_cleanup = $core_write_package->cleanup_expired_media_backups();
+$media_backup_cleanup_history = get_post_meta( 790, '_npcink_ai_media_file_replacement_history', true );
+npcink_abilities_toolkit_assert_true( is_file( $manual_retention_path ), 'expired exact-manifest backup remains available without explicit cleanup confirmation' );
+npcink_abilities_toolkit_assert_same( 'active', $media_backup_cleanup_history[0]['status'] ?? '', 'expired exact-manifest history remains restorable' );
+npcink_abilities_toolkit_assert_true( ! is_file( $automatic_retention_path ), 'legacy backup without a manual policy is removed after retention' );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $media_backup_cleanup_history[1]['status'] ?? '', 'legacy backup history records automatic expiry' );
+npcink_abilities_toolkit_assert_true( (int) ( $media_backup_cleanup['removed'] ?? 0 ) >= 1, 'backup cleanup reports automatically removed legacy files' );
 
 update_post_meta( 79, '_wp_attached_file', '2026/06/workflow-diagram-image.jpg' );
 $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][79]->post_mime_type = 'image/jpeg';
