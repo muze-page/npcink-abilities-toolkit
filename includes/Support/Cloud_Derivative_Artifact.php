@@ -36,6 +36,7 @@ final class Cloud_Derivative_Artifact {
 		'suggested_filename',
 		'filename_basis',
 		'processing_warnings',
+		'transform_facts',
 	);
 
 	private const RECEIVED_PAYLOAD_KEYS = array(
@@ -113,6 +114,11 @@ final class Cloud_Derivative_Artifact {
 					'maxItems' => 20,
 					'items'    => array( 'type' => 'string', 'maxLength' => 200 ),
 				),
+				'transform_facts' => array(
+					'type' => 'object',
+					'properties' => array_fill_keys( array( 'source_checksum', 'output_checksum', 'source_format', 'output_format', 'source_mime_type', 'output_mime_type', 'source_width', 'source_height', 'output_width', 'output_height', 'source_filesize_bytes', 'output_filesize_bytes', 'source_frame_count', 'output_frame_count', 'source_has_alpha', 'output_has_alpha', 'alpha_preserved', 'decodable', 'crop_applied', 'watermark_applied', 'resize_applied', 'encoding_mode', 'savings_basis_points' ), array() ),
+					'additionalProperties' => false,
+				),
 			),
 			'required'             => self::DESCRIPTOR_KEYS,
 			'additionalProperties' => false,
@@ -186,7 +192,7 @@ final class Cloud_Derivative_Artifact {
 		if ( ! is_array( $artifact ) ) {
 			return self::error( 'descriptor_invalid', __( 'The derivative artifact descriptor must be an object.', 'npcink-abilities-toolkit' ) );
 		}
-		$keys_valid = self::validate_exact_keys( $artifact, self::DESCRIPTOR_KEYS, 'descriptor_fields_invalid', __( 'The derivative artifact descriptor does not match the required 11-field contract.', 'npcink-abilities-toolkit' ) );
+		$keys_valid = self::validate_exact_keys( $artifact, self::DESCRIPTOR_KEYS, 'descriptor_fields_invalid', __( 'The derivative artifact descriptor does not match the required 12-field contract.', 'npcink-abilities-toolkit' ) );
 		if ( is_wp_error( $keys_valid ) ) {
 			return $keys_valid;
 		}
@@ -263,6 +269,8 @@ final class Cloud_Derivative_Artifact {
 			return $warnings;
 		}
 		$normalized['processing_warnings'] = $warnings;
+		$transform_facts = is_array( $artifact['transform_facts'] ?? null ) ? $artifact['transform_facts'] : array();
+		$normalized['transform_facts'] = $transform_facts;
 
 		return $normalized;
 	}

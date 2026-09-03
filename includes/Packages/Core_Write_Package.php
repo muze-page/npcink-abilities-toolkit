@@ -1033,6 +1033,7 @@ final class Core_Write_Package {
 						'derivative_relative_file'      => array( 'type' => 'string', 'minLength' => 1 ),
 						'expected_current_relative_file' => array( 'type' => 'string' ),
 						'expected_current_mime_type'    => array( 'type' => 'string' ),
+						'expected_current_media_fingerprint' => array( 'type' => 'string', 'minLength' => 64, 'maxLength' => 71 ),
 						'expected_derivative_mime_type' => array( 'type' => 'string' ),
 						'expected_storage_provider'     => array( 'type' => 'string' ),
 						'expected_storage_adapter'      => array( 'type' => 'string' ),
@@ -1077,6 +1078,7 @@ final class Core_Write_Package {
 						'backup_id'                      => array( 'type' => 'string', 'minLength' => 1 ),
 						'expected_current_relative_file' => array( 'type' => 'string' ),
 						'expected_current_mime_type'     => array( 'type' => 'string' ),
+						'expected_current_media_fingerprint' => array( 'type' => 'string', 'minLength' => 64, 'maxLength' => 71 ),
 						'expected_storage_provider'      => array( 'type' => 'string' ),
 						'expected_storage_adapter'       => array( 'type' => 'string' ),
 						'storage_preflight'              => $this->media_storage_preflight_schema(),
@@ -1121,6 +1123,7 @@ final class Core_Write_Package {
 							'target_file_name'               => array( 'type' => 'string', 'minLength' => 1, 'maxLength' => 120 ),
 							'expected_current_relative_file' => array( 'type' => 'string' ),
 							'expected_current_mime_type'     => array( 'type' => 'string' ),
+							'expected_current_media_fingerprint' => array( 'type' => 'string', 'minLength' => 64, 'maxLength' => 71 ),
 							'expected_current_md5'           => array( 'type' => 'string', 'minLength' => 32, 'maxLength' => 36 ),
 							'expected_current_sha256'        => array( 'type' => 'string', 'minLength' => 64, 'maxLength' => 71 ),
 							'expected_storage_provider'      => array( 'type' => 'string' ),
@@ -2582,6 +2585,13 @@ final class Core_Write_Package {
 		$payload['backup'] = is_array( $result['backup'] ?? null ) ? $result['backup'] : $payload['backup'];
 		$payload['content_reference_repairs'] = is_array( $result['content_reference_repairs'] ?? null ) ? $result['content_reference_repairs'] : $payload['content_reference_repairs'];
 		$payload['verification'] = $this->media_file_operation_verification( $attachment_id, $payload['after'], $payload['backup'], $payload['content_reference_repairs'] );
+		if ( function_exists( 'do_action' ) && $this->media_file_operation_is_verified( $payload['verification'] ) ) {
+			do_action( 'npcink_abilities_toolkit_media_file_version_changed', $attachment_id, array(
+				'replacement_id' => (string) ( $payload['replacement_id'] ?? '' ),
+				'new_media_fingerprint' => (string) ( $payload['after']['media_fingerprint'] ?? '' ),
+				'derived_from_media_fingerprint' => (string) ( $payload['before']['media_fingerprint'] ?? '' ),
+			) );
+		}
 		$payload['history'] = $this->get_media_file_replacement_history( $attachment_id );
 		$payload['dry_run'] = false;
 		unset( $payload['preview'] );
@@ -2689,6 +2699,13 @@ final class Core_Write_Package {
 		$payload['current_backup'] = is_array( $result['current_backup'] ?? null ) ? $result['current_backup'] : $payload['current_backup'];
 		$payload['content_reference_repairs'] = is_array( $result['content_reference_repairs'] ?? null ) ? $result['content_reference_repairs'] : $payload['content_reference_repairs'];
 		$payload['verification'] = $this->media_file_operation_verification( $attachment_id, $payload['after'], $payload['current_backup'], $payload['content_reference_repairs'] );
+		if ( function_exists( 'do_action' ) && $this->media_file_operation_is_verified( $payload['verification'] ) ) {
+			do_action( 'npcink_abilities_toolkit_media_file_version_changed', $attachment_id, array(
+				'replacement_id' => (string) ( $payload['replacement_id'] ?? '' ),
+				'new_media_fingerprint' => (string) ( $payload['after']['media_fingerprint'] ?? '' ),
+				'derived_from_media_fingerprint' => (string) ( $payload['before']['media_fingerprint'] ?? '' ),
+			) );
+		}
 		$payload['history'] = $this->get_media_file_replacement_history( $attachment_id );
 		$payload['dry_run'] = false;
 		unset( $payload['preview'] );
@@ -2888,6 +2905,13 @@ final class Core_Write_Package {
 		);
 		if ( is_wp_error( $commit_verified ) ) {
 			return $this->cloud_media_adoption_failure_with_cleanup( $commit_verified, $attachment_id, $plan, $materialized, $rollback_state );
+		}
+		if ( function_exists( 'do_action' ) ) {
+			do_action( 'npcink_abilities_toolkit_media_file_version_changed', $attachment_id, array(
+				'replacement_id' => (string) ( $plan['replacement_id'] ?? '' ),
+				'new_media_fingerprint' => (string) ( $payload['after']['media_fingerprint'] ?? '' ),
+				'derived_from_media_fingerprint' => (string) ( $payload['before']['media_fingerprint'] ?? '' ),
+			) );
 		}
 		$payload['transfer_evidence'] = $transfer_evidence;
 		$payload['delivery_ack'] = $delivery_ack;
@@ -4622,6 +4646,7 @@ final class Core_Write_Package {
 		$derivative['url'] = $this->media_url_for_relative_file( $relative_file );
 		$derivative['filesize_bytes'] = absint( filesize( $destination ) );
 		$derivative['artifact_checksum'] = $sha256;
+		$derivative['media_fingerprint'] = $this->normalize_media_sha256( (string) $sha256 );
 		$derivative['generated_at_gmt'] = gmdate( 'c' );
 		$derivative['_transfer_evidence'] = $received['transfer_evidence'];
 		$derivative['_delivery_ack'] = $received['delivery_ack'];
@@ -5578,6 +5603,17 @@ final class Core_Write_Package {
 		if ( '' === $derivative_path || ! is_readable( $derivative_path ) ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_derivative_file_unavailable', __( 'The derivative file is unavailable for replacement.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 		}
+		$fresh_current = $this->current_media_file_state( $attachment_id );
+		if ( is_wp_error( $fresh_current ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_media_replace_precommit_drift', __( 'The current media file changed after the replacement was reviewed.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
+		}
+		$planned_fingerprint = $this->normalize_media_sha256( (string) ( $current['media_fingerprint'] ?? '' ) );
+		$fresh_fingerprint = $this->normalize_media_sha256( (string) ( $fresh_current['media_fingerprint'] ?? '' ) );
+		if ( '' === $planned_fingerprint || $planned_fingerprint !== $fresh_fingerprint ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_media_replace_precommit_drift', __( 'The current media file changed after the replacement was reviewed.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
+		}
+		$current = $fresh_current;
+		$current_path = (string) ( $current['file_path'] ?? $current_path );
 		$backup_dir_ready = '' !== $backup_path && $this->ensure_media_directory( dirname( $backup_path ) );
 		$backup_context = array(
 			'operation'     => 'replace_media_file',
@@ -5615,6 +5651,7 @@ final class Core_Write_Package {
 
 		$after = is_array( $plan['after'] ?? null ) ? $plan['after'] : array();
 		$after['filesize_bytes'] = absint( filesize( $derivative_path ) );
+		$after['media_fingerprint'] = $this->normalize_media_sha256( (string) hash_file( 'sha256', $derivative_path ) );
 		$backup = is_array( $plan['backup'] ?? null ) ? $plan['backup'] : array();
 		$backup['filesize_bytes'] = absint( filesize( $backup_path ) );
 		$updated = $this->update_media_file_pointer( $attachment_id, $derivative_relative, (string) ( $after['mime_type'] ?? '' ), $after, $batch_manifest );
@@ -5635,13 +5672,17 @@ final class Core_Write_Package {
 				'before'             => is_array( $plan['before'] ?? null ) ? $plan['before'] : array(),
 				'after'              => $after,
 				'backup'             => $backup,
+				'new_media_fingerprint' => (string) ( $after['media_fingerprint'] ?? '' ),
+				'derived_from_media_fingerprint' => (string) ( $plan['before']['media_fingerprint'] ?? '' ),
+				'transform_type' => $this->media_transform_type_from_facts( is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array() ),
+				'visual_reuse_policy' => $this->media_visual_reuse_policy_from_facts( is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array() ),
+				'transform_facts' => is_array( $plan['artifact']['transform_facts'] ?? null ) ? $plan['artifact']['transform_facts'] : array(),
 			),
 			$batch_manifest
 		);
 		if ( is_wp_error( $history_updated ) ) {
 			return $history_updated;
 		}
-
 		return array(
 			'replaced' => true,
 			'rolled_back' => false,
@@ -5713,6 +5754,7 @@ final class Core_Write_Package {
 
 			$after = is_array( $plan['after'] ?? null ) ? $plan['after'] : array();
 			$after['filesize_bytes'] = absint( filesize( $target_path ) );
+			$after['media_fingerprint'] = $this->normalize_media_sha256( (string) hash_file( 'sha256', $target_path ) );
 			$backup = is_array( $plan['backup'] ?? null ) ? $plan['backup'] : array();
 			$backup['filesize_bytes'] = absint( filesize( $backup_path ) );
 			$pointer_state = $after;
@@ -5814,6 +5856,7 @@ final class Core_Write_Package {
 
 			$after = is_array( $plan['after'] ?? null ) ? $plan['after'] : array();
 			$after['filesize_bytes'] = absint( filesize( $target_path ) );
+			$after['media_fingerprint'] = $this->normalize_media_sha256( (string) hash_file( 'sha256', $target_path ) );
 			$current_backup = is_array( $plan['current_backup'] ?? null ) ? $plan['current_backup'] : array();
 			$current_backup['filesize_bytes'] = absint( filesize( $current_backup_path ) );
 			$updated = $this->update_media_file_pointer( $attachment_id, $target_relative, (string) ( $after['mime_type'] ?? '' ), $after, $batch_manifest );
@@ -5837,6 +5880,11 @@ final class Core_Write_Package {
 					'before'             => is_array( $plan['before'] ?? null ) ? $plan['before'] : array(),
 					'after'              => $after,
 					'backup'             => $current_backup,
+					'new_media_fingerprint' => (string) ( $after['media_fingerprint'] ?? '' ),
+					'derived_from_media_fingerprint' => (string) ( $plan['before']['media_fingerprint'] ?? '' ),
+					'transform_type' => 'restore',
+					'visual_reuse_policy' => 'requires_reidentification',
+					'transform_facts' => array( 'restore_from_backup' => true ),
 				),
 				$batch_manifest
 			);
@@ -6045,6 +6093,7 @@ final class Core_Write_Package {
 			$public_url = $this->media_url_for_relative_file( $relative_file );
 		}
 		$storage = $this->build_media_storage_state( $attachment_id, $relative_file, $file_path, $public_url );
+		$hashes = $this->media_content_hashes_for_state( array( 'file_path' => $file_path ) );
 
 		return array(
 			'relative_file'   => $relative_file,
@@ -6055,6 +6104,8 @@ final class Core_Write_Package {
 			'width'           => absint( $metadata['width'] ?? 0 ),
 			'height'          => absint( $metadata['height'] ?? 0 ),
 			'filesize_bytes'  => ( '' !== $file_path && is_readable( $file_path ) ) ? absint( filesize( $file_path ) ) : absint( $metadata['filesize'] ?? 0 ),
+			'media_fingerprint' => $this->normalize_media_sha256( (string) ( $hashes['sha256'] ?? '' ) ),
+			'metadata_fingerprint' => hash( 'sha256', wp_json_encode( $metadata ) ),
 			'metadata'        => $metadata,
 			'storage'         => $storage,
 		);
@@ -6075,6 +6126,10 @@ final class Core_Write_Package {
 		$expected_mime = sanitize_text_field( (string) ( $input['expected_current_mime_type'] ?? '' ) );
 		if ( '' !== $expected_mime && $expected_mime !== (string) ( $current['mime_type'] ?? '' ) ) {
 			return new \WP_Error( 'npcink_abilities_toolkit_current_mime_mismatch', __( 'The current media MIME type did not match the expected value.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
+		}
+		$expected_fingerprint = $this->normalize_media_sha256( (string) ( $input['expected_current_media_fingerprint'] ?? '' ) );
+		if ( '' !== $expected_fingerprint && $expected_fingerprint !== (string) ( $current['media_fingerprint'] ?? '' ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_current_media_fingerprint_mismatch', __( 'The current media file fingerprint did not match the expected value.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 		}
 		$storage_error = $this->validate_media_expected_storage_state( $current, $input );
 		if ( is_wp_error( $storage_error ) ) {
@@ -6146,7 +6201,7 @@ final class Core_Write_Package {
 			if ( '' !== $expected_md5 && $expected_md5 !== (string) ( $hashes['md5'] ?? '' ) ) {
 				return new \WP_Error( 'npcink_abilities_toolkit_current_md5_mismatch', __( 'The current media file MD5 did not match the expected value.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 			}
-			if ( '' !== $expected_sha256 && $expected_sha256 !== (string) ( $hashes['sha256'] ?? '' ) ) {
+			if ( '' !== $expected_sha256 && $expected_sha256 !== $this->normalize_media_sha256( (string) ( $hashes['sha256'] ?? '' ) ) ) {
 				return new \WP_Error( 'npcink_abilities_toolkit_current_sha256_mismatch', __( 'The current media file SHA-256 did not match the expected value.', 'npcink-abilities-toolkit' ), array( 'status' => 409 ) );
 			}
 
@@ -6325,6 +6380,8 @@ final class Core_Write_Package {
 			'width'          => absint( $state['width'] ?? 0 ),
 			'height'         => absint( $state['height'] ?? 0 ),
 			'filesize_bytes' => absint( $state['filesize_bytes'] ?? 0 ),
+			'media_fingerprint' => $this->normalize_media_sha256( (string) ( $state['media_fingerprint'] ?? '' ) ),
+			'metadata_fingerprint' => sanitize_text_field( (string) ( $state['metadata_fingerprint'] ?? '' ) ),
 			'storage'        => is_array( $state['storage'] ?? null ) ? $this->sanitize_media_storage_state( $state['storage'] ) : array(),
 		);
 	}
@@ -6346,6 +6403,9 @@ final class Core_Write_Package {
 			'width'          => absint( $derivative['width'] ?? 0 ),
 			'height'         => absint( $derivative['height'] ?? 0 ),
 			'filesize_bytes' => absint( $derivative['filesize_bytes'] ?? 0 ),
+			'media_fingerprint' => $this->normalize_media_sha256( (string) ( $derivative['media_fingerprint'] ?? $derivative['artifact_checksum'] ?? '' ) ),
+			'derived_from_media_fingerprint' => $this->normalize_media_sha256( (string) ( $derivative['derived_from_media_fingerprint'] ?? '' ) ),
+			'transform_facts' => is_array( $derivative['transform_facts'] ?? null ) ? $derivative['transform_facts'] : array(),
 			'attachment_id'  => absint( $attachment_id ),
 		);
 	}
@@ -6428,6 +6488,30 @@ final class Core_Write_Package {
 		}
 
 		return true;
+	}
+
+	private function media_transform_type_from_facts( array $facts ) {
+		if ( ! empty( $facts['crop_applied'] ) ) { return 'crop'; }
+		if ( ! empty( $facts['watermark_applied'] ) ) { return 'watermark'; }
+		if ( ! empty( $facts['resize_applied'] ) ) { return 'resize'; }
+		return 'encoding';
+	}
+
+	private function media_visual_reuse_policy_from_facts( array $facts ) {
+		if ( empty( $facts ) || ! empty( $facts['crop_applied'] ) || ! empty( $facts['watermark_applied'] ) || ( isset( $facts['alpha_preserved'] ) && ! $facts['alpha_preserved'] ) ) {
+			return 'requires_reidentification';
+		}
+		if ( 'lossless' === (string) ( $facts['encoding_mode'] ?? '' ) && empty( $facts['resize_applied'] ) ) {
+			return 'reuse';
+		}
+		$source_width = absint( $facts['source_width'] ?? 0 );
+		$source_height = absint( $facts['source_height'] ?? 0 );
+		$output_width = absint( $facts['output_width'] ?? 0 );
+		$output_height = absint( $facts['output_height'] ?? 0 );
+		if ( $source_width > 0 && $source_height > 0 && $output_width >= (int) ceil( $source_width * 0.75 ) && $output_height >= (int) ceil( $source_height * 0.75 ) ) {
+			return 'reuse_with_human_check';
+		}
+		return 'requires_reidentification';
 	}
 
 	/**
@@ -7546,7 +7630,7 @@ final class Core_Write_Package {
 			if ( 0 === strpos( $value, 'sha256:' ) ) {
 				$value = substr( $value, 7 );
 			}
-			return 1 === preg_match( '/^[a-f0-9]{64}$/', $value ) ? $value : '';
+			return 1 === preg_match( '/^[a-f0-9]{64}$/', $value ) ? 'sha256:' . $value : '';
 		}
 
 		/**
@@ -8607,6 +8691,23 @@ final class Core_Write_Package {
 			'backup_available'           => '' !== $backup_path && is_readable( $backup_path ),
 			'rollback_available'         => '' !== $backup_path && is_readable( $backup_path ),
 		);
+	}
+
+	private function media_file_operation_is_verified( array $verification ) {
+		if (
+			true !== ( $verification['media_file_matches_expected'] ?? false )
+			|| true !== ( $verification['media_mime_type_matches_expected'] ?? false )
+			|| true !== ( $verification['backup_available'] ?? false )
+			|| true !== ( $verification['rollback_available'] ?? false )
+		) {
+			return false;
+		}
+		foreach ( (array) ( $verification['post_references_verified'] ?? array() ) as $reference ) {
+			if ( ! is_array( $reference ) || empty( $reference['updated'] ) || empty( $reference['old_url_absent'] ) || empty( $reference['new_url_present'] ) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

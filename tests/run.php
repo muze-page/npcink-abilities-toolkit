@@ -101,6 +101,16 @@ function npcink_abilities_toolkit_cloud_artifact_fixture( array $overrides = arr
 				'final_sanitize_unique_required' => true,
 			),
 			'processing_warnings' => array(),
+			'transform_facts' => array(
+				'source_checksum' => 'sha256:' . hash( 'sha256', 'source-fixture' ),
+				'output_checksum' => 'sha256:' . hash( 'sha256', 'cloud-artifact-fixture' ),
+				'encoding_mode' => 'lossy',
+				'source_width' => 1600,
+				'source_height' => 862,
+				'output_width' => 1600,
+				'output_height' => 862,
+				'alpha_preserved' => true,
+			),
 		),
 		$overrides
 	);
@@ -257,6 +267,9 @@ foreach ( array( 'npcink-abilities-toolkit/update-post-blocks', 'npcink-abilitie
 	npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, "'" . $site_editor_ability_id . "' => array(" ), 'Core write package remains the definition owner for Site Editor ability: ' . $site_editor_ability_id );
 }
 npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, 'use Media_Reference_Discovery_Write_Methods;' ), 'Core write package composes the media reference discovery trait' );
+npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, "hash_file( 'sha256'" ) && false !== strpos( $core_write_source, "'metadata_fingerprint'" ) && false !== strpos( $core_write_source, "'new_media_fingerprint'" ) && false !== strpos( $core_write_source, "'derived_from_media_fingerprint'" ), 'media write paths use real SHA-256 content fingerprints, keep metadata fingerprints separate, and record replacement lineage' );
+npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, "'transform_type'" ) && false !== strpos( $core_write_source, "'visual_reuse_policy'" ) && false !== strpos( $core_write_source, "'transform_facts'" ) && false !== strpos( $core_write_source, 'media_visual_reuse_policy_from_facts' ), 'media replacement history records transform facts and the bounded visual-evidence reuse policy' );
+npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false !== strpos( $core_write_source, 'media_file_operation_is_verified' ) && false !== strpos( $core_write_source, "do_action( 'npcink_abilities_toolkit_media_file_version_changed'" ), 'media replacement and restore publish a version-change event only through final verification' );
 foreach ( array( 'media_content_reference_pairs_for_plan', 'media_content_reference_dynamic_sized_pairs', 'media_content_reference_source_relative_files', 'media_content_reference_without_unique_suffix', 'merge_media_content_reference_pairs', 'media_content_reference_candidate_posts', 'media_content_reference_needles', 'media_content_reference_url_path' ) as $moved_media_reference_discovery_method ) {
 	npcink_abilities_toolkit_assert_true( is_string( $core_write_source ) && false === strpos( $core_write_source, 'function ' . $moved_media_reference_discovery_method . '(' ), 'Core write package does not duplicate moved media reference discovery method: ' . $moved_media_reference_discovery_method );
 	npcink_abilities_toolkit_assert_true( is_string( $media_reference_discovery_write_trait ) && false !== strpos( $media_reference_discovery_write_trait, 'function ' . $moved_media_reference_discovery_method . '(' ), 'media reference discovery trait owns moved method: ' . $moved_media_reference_discovery_method );
@@ -1327,6 +1340,15 @@ $core_read_package = new Core_Read_Package( $package_categories, $package_regist
 $core_read_package->boot();
 $core_write_package = new Core_Write_Package( $package_categories, $package_registrar );
 $core_write_package->boot();
+$media_reuse_policy_method = new ReflectionMethod( Core_Write_Package::class, 'media_visual_reuse_policy_from_facts' );
+if ( PHP_VERSION_ID < 80100 ) {
+	$media_reuse_policy_method->setAccessible( true );
+}
+npcink_abilities_toolkit_assert_same( 'reuse', $media_reuse_policy_method->invoke( $core_write_package, array( 'encoding_mode' => 'lossless', 'resize_applied' => false ) ), 'lossless encoding without resize directly reuses visual evidence' );
+npcink_abilities_toolkit_assert_same( 'reuse_with_human_check', $media_reuse_policy_method->invoke( $core_write_package, array( 'encoding_mode' => 'lossy', 'source_width' => 1000, 'source_height' => 800, 'output_width' => 750, 'output_height' => 600 ) ), 'lossy compression or exactly 25 percent scaling requires human visual confirmation' );
+npcink_abilities_toolkit_assert_same( 'requires_reidentification', $media_reuse_policy_method->invoke( $core_write_package, array( 'encoding_mode' => 'lossy', 'source_width' => 1000, 'source_height' => 800, 'output_width' => 749, 'output_height' => 600 ) ), 'scaling beyond the 25 percent limit requires fresh visual identification' );
+npcink_abilities_toolkit_assert_same( 'requires_reidentification', $media_reuse_policy_method->invoke( $core_write_package, array( 'crop_applied' => true, 'source_width' => 1000, 'source_height' => 800, 'output_width' => 1000, 'output_height' => 800 ) ), 'crop transforms cannot reuse prior visual evidence' );
+npcink_abilities_toolkit_assert_same( 'requires_reidentification', $media_reuse_policy_method->invoke( $core_write_package, array( 'alpha_preserved' => false, 'source_width' => 1000, 'source_height' => 800, 'output_width' => 1000, 'output_height' => 800 ) ), 'loss of transparency cannot reuse prior visual evidence' );
 $core_destructive_package = new Core_Destructive_Package( $package_categories, $package_registrar );
 $core_destructive_package->boot();
 $core_comment_package = new Core_Comment_Package( $package_categories, $package_registrar );
@@ -1655,7 +1677,7 @@ npcink_abilities_toolkit_assert_true( isset( $package_abilities['npcink-abilitie
 npcink_abilities_toolkit_assert_same( array( 'media.read' ), $package_abilities['npcink-abilities-toolkit/build-media-optimization-plan']['required_scopes'] ?? array(), 'media optimization plan remains a read-scope planning ability' );
 npcink_abilities_toolkit_assert_same( array( 'attachment_id', 'media_details_input', 'derivative_artifact' ), $package_abilities['npcink-abilities-toolkit/build-media-optimization-plan']['input_schema']['required'] ?? array(), 'media optimization plan requires metadata and artifact evidence' );
 $media_derivative_artifact_schema = $package_abilities['npcink-abilities-toolkit/build-media-optimization-plan']['input_schema']['properties']['derivative_artifact'] ?? array();
-npcink_abilities_toolkit_assert_same( array( 'artifact_id', 'expires_at', 'mime_type', 'format', 'width', 'height', 'filesize_bytes', 'sha256', 'suggested_filename', 'filename_basis', 'processing_warnings' ), $media_derivative_artifact_schema['required'] ?? array(), 'media optimization artifacts require the exact 11-field local proposal descriptor' );
+npcink_abilities_toolkit_assert_same( array( 'artifact_id', 'expires_at', 'mime_type', 'format', 'width', 'height', 'filesize_bytes', 'sha256', 'suggested_filename', 'filename_basis', 'processing_warnings', 'transform_facts' ), $media_derivative_artifact_schema['required'] ?? array(), 'media optimization artifacts require the exact v2 local proposal descriptor' );
 npcink_abilities_toolkit_assert_same( false, $media_derivative_artifact_schema['additionalProperties'] ?? null, 'media optimization artifacts reject undeclared descriptor fields at the public ability boundary' );
 npcink_abilities_toolkit_assert_same( array( 'owner', 'strategy', 'final_sanitize_unique_required' ), $media_derivative_artifact_schema['properties']['filename_basis']['required'] ?? array(), 'media optimization artifact schemas require the complete nested WordPress filename authority basis' );
 npcink_abilities_toolkit_assert_same( 26214400, $media_derivative_artifact_schema['properties']['filesize_bytes']['maximum'] ?? 0, 'media optimization artifact evidence stays within the shared 25 MiB local limit' );
@@ -5283,6 +5305,7 @@ npcink_abilities_toolkit_assert_same( true, $media_optimization_preview['origina
 npcink_abilities_toolkit_assert_same( false, $media_optimization_preview['replace_original'] ?? null, 'optimize-media-asset never replaces the original file' );
 npcink_abilities_toolkit_assert_same( 'webp', $media_optimization_preview['derivative']['format'] ?? '', 'optimize-media-asset plans WebP derivative by default' );
 npcink_abilities_toolkit_assert_same( 1920, $media_optimization_preview['derivative']['width'] ?? 0, 'optimize-media-asset plans bounded derivative width' );
+npcink_abilities_toolkit_assert_true( ! isset( $media_optimization_preview['media_fingerprint'] ) && ( ! isset( $media_optimization_preview['history'] ) || ! is_array( $media_optimization_preview['history'] ) || ! isset( $media_optimization_preview['history']['new_media_fingerprint'] ) ), 'media optimization preview writes no current fingerprint or replacement lineage before an explicit commit' );
 update_post_meta(
 	79,
 	'_npcink_ai_media_optimized_derivatives',
@@ -5316,6 +5339,19 @@ npcink_abilities_toolkit_assert_same( true, $media_replace_preview['original_pre
 npcink_abilities_toolkit_assert_same( '2026/06/workflow-diagram-image-optimized.webp', $media_replace_preview['after']['relative_file'] ?? '', 'replace-media-file uses recorded optimized derivative as target' );
 npcink_abilities_toolkit_assert_true( 0 === strpos( (string) ( $media_replace_preview['backup']['relative_file'] ?? '' ), 'npcink-abilities-toolkit-backups/2026/06/' ), 'replace-media-file plans backups in the dedicated Npcink uploads backup directory' );
 npcink_abilities_toolkit_assert_true( false !== strpos( (string) ( $media_replace_preview['backup']['relative_file'] ?? '' ), 'npcink-abilities-toolkit-backup' ), 'replace-media-file plans a Npcink backup file' );
+$media_replace_derivative_path = $GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] . '/2026/06/workflow-diagram-image-optimized.webp';
+file_put_contents( $media_replace_derivative_path, 'optimized-webp-bytes' );
+$media_replace_plan_method = new ReflectionMethod( Core_Write_Package::class, 'build_media_file_replacement_plan' );
+$media_replace_execute_method = new ReflectionMethod( Core_Write_Package::class, 'execute_media_file_replacement' );
+if ( PHP_VERSION_ID < 80100 ) {
+	$media_replace_plan_method->setAccessible( true );
+	$media_replace_execute_method->setAccessible( true );
+}
+$media_replace_drift_plan = $media_replace_plan_method->invoke( $core_write_package, 79, array( 'derivative_relative_file' => '2026/06/workflow-diagram-image-optimized.webp' ) );
+file_put_contents( $workflow_media_path, 'third-party-replacement-after-preview' );
+$media_replace_drift_result = $media_replace_execute_method->invoke( $core_write_package, 79, $media_replace_drift_plan );
+npcink_abilities_toolkit_assert_true( is_wp_error( $media_replace_drift_result ) && 'npcink_abilities_toolkit_media_replace_precommit_drift' === $media_replace_drift_result->get_error_code(), 'replace-media-file rejects source-byte drift immediately before the file switch' );
+file_put_contents( $workflow_media_path, 'original-jpeg-bytes' );
 $cloud_artifact_contents = base64_decode( 'UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA', true );
 npcink_abilities_toolkit_assert_true( is_string( $cloud_artifact_contents ), 'Cloud derivative fixture decodes into real WebP bytes' );
 $cloud_artifact_sha256 = hash( 'sha256', $cloud_artifact_contents );
@@ -6079,6 +6115,9 @@ npcink_abilities_toolkit_assert_same( 'media_artifact_delivery_ack.v1', $cloud_a
 npcink_abilities_toolkit_assert_same( 'verified_transfer_only', $cloud_adoption_commit['delivery_ack']['acknowledgement_scope'] ?? '', 'adopt-cloud-media-derivative keeps ACK limited to transfer proof rather than local apply proof' );
 npcink_abilities_toolkit_assert_same( 'image/webp', get_post_mime_type( 79 ), 'adopt-cloud-media-derivative commit updates attachment MIME type' );
 npcink_abilities_toolkit_assert_same( '2026/06/customer-approved-diagram.webp', get_post_meta( 79, '_wp_attached_file', true ), 'adopt-cloud-media-derivative commit accepts an approved custom derivative file name' );
+$cloud_adoption_latest_history = get_post_meta( 79, '_npcink_ai_media_latest_file_replacement', true );
+npcink_abilities_toolkit_assert_true( 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $cloud_adoption_latest_history['new_media_fingerprint'] ?? '' ) ) && 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $cloud_adoption_latest_history['derived_from_media_fingerprint'] ?? '' ) ), 'adopt-cloud-media-derivative records canonical source and target fingerprints in replacement lineage' );
+npcink_abilities_toolkit_assert_true( in_array( (string) ( $cloud_adoption_latest_history['visual_reuse_policy'] ?? '' ), array( 'reuse', 'reuse_with_human_check', 'requires_reidentification' ), true ) && is_array( $cloud_adoption_latest_history['transform_facts'] ?? null ), 'adopt-cloud-media-derivative records transform facts and a bounded visual reuse policy' );
 npcink_abilities_toolkit_assert_true( $cloud_lifecycle_hooks['post_updated'] >= 2 && $cloud_lifecycle_hooks['save_post'] >= 2 && $cloud_lifecycle_hooks['wp_after_insert_post'] >= 2, 'Cloud MIME and post-content writes retain the WordPress update lifecycle while each row lock is held' );
 npcink_abilities_toolkit_assert_same( 1, $cloud_adoption_commit['content_reference_repairs']['updated_count'] ?? 0, 'adopt-cloud-media-derivative commit updates posts that embed the attachment URL' );
 npcink_abilities_toolkit_assert_same( '2026/06/customer-approved-diagram.webp', $cloud_adoption_commit['verification']['media_current_file'] ?? '', 'adopt-cloud-media-derivative verification reports current media file' );
@@ -6205,12 +6244,14 @@ update_post_meta(
 				'mime_type'     => 'image/jpeg',
 				'width'         => 2600,
 				'height'        => 1400,
+				'media_fingerprint' => 'sha256:' . hash( 'sha256', 'original-jpeg-bytes' ),
 			),
 			'after'              => array(
 				'relative_file' => '2026/06/workflow-diagram-image-optimized.webp',
 				'mime_type'     => 'image/webp',
 				'width'         => 1920,
 				'height'        => 1034,
+				'media_fingerprint' => 'sha256:' . hash( 'sha256', 'optimized-webp-bytes' ),
 			),
 			'backup'             => array(
 				'relative_file'  => 'npcink-abilities-toolkit-backups/2026/06/workflow-diagram-image-npcink-abilities-toolkit-backup-media_replace_unit.jpg',
@@ -6530,6 +6571,8 @@ npcink_abilities_toolkit_assert_true( is_file( $media_restore_current_backup_pat
 npcink_abilities_toolkit_assert_same( 'rolled_back', $media_restore_success_original[0]['status'] ?? '', 'restore-media-backup success marks the selected replacement rolled back' );
 npcink_abilities_toolkit_assert_same( 'active', $media_restore_success_latest['status'] ?? '', 'restore-media-backup success records an active restore history projection' );
 npcink_abilities_toolkit_assert_same( 'media_replace_unit', $media_restore_success_latest['restored_from'] ?? '', 'restore-media-backup success links the restore record to its selected backup' );
+npcink_abilities_toolkit_assert_true( 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $media_restore_success_latest['new_media_fingerprint'] ?? '' ) ) && 1 === preg_match( '/^sha256:[a-f0-9]{64}$/', (string) ( $media_restore_success_latest['derived_from_media_fingerprint'] ?? '' ) ), 'restore-media-backup success records canonical source and target fingerprints in restore lineage' );
+npcink_abilities_toolkit_assert_same( 'requires_reidentification', $media_restore_success_latest['visual_reuse_policy'] ?? '', 'restore-media-backup marks restored media as requiring fresh visual identification' );
 npcink_abilities_toolkit_assert_same( $restore_compensation_before, glob( $restore_compensation_pattern ), 'restore-media-backup success removes its transient overwrite compensation file' );
 
 update_post_meta( 79, '_wp_attached_file', '2026/06/workflow-diagram-image.jpg' );
@@ -6952,7 +6995,7 @@ $media_projection_rows = $core_read_package->get_media_inventory_health(
 );
 npcink_abilities_toolkit_assert_same( 1, count( (array) ( $media_projection_rows['data']['items'] ?? array() ) ), 'get-media-inventory-health can revalidate a bounded attachment-id selection' );
 npcink_abilities_toolkit_assert_same( 79, $media_projection_rows['data']['items'][0]['attachment_id'] ?? 0, 'media inventory attachment-id selection preserves the requested local identity' );
-npcink_abilities_toolkit_assert_true( 64 === strlen( (string) ( $media_projection_rows['data']['items'][0]['media_fingerprint'] ?? '' ) ), 'media inventory rows expose a deterministic revision fingerprint for rebuildable Cloud projections' );
+npcink_abilities_toolkit_assert_true( 71 === strlen( (string) ( $media_projection_rows['data']['items'][0]['media_fingerprint'] ?? '' ) ) && 0 === strpos( (string) ( $media_projection_rows['data']['items'][0]['media_fingerprint'] ?? '' ), 'sha256:' ), 'media inventory rows expose a canonical SHA-256 revision fingerprint for rebuildable Cloud projections' );
 $media_cleanup = $core_read_package->get_media_cleanup_opportunities(
 	array(
 		'mime_type' => 'image',
