@@ -1,7 +1,7 @@
 # 0.5.4 Release Verification
 
-Status: release candidate verification rerun complete; final commit and
-cross-repository validation are pending.
+Status: release candidate committed and locally verified; cross-repository
+exact-SHA validation is pending.
 
 This note records the 0.5.4 candidate built from the clean `origin/master`
 baseline plus the reviewed internal-link and media lifecycle changes. The
@@ -45,7 +45,7 @@ header.
 
 ## Publication Gate
 
-Do not tag or publish until these verification fixes are committed, the release
-payload is rebuilt from that exact commit, its SHA-256 is recorded, and the
+Do not tag or publish until the release payload is rebuilt from the final clean
+candidate, its SHA-256 is recorded in the external release record, and the
 cross-repository quality matrix passes. Record the final source commit, payload
 hash, tag, and WordPress.org SVN revision here after publication.
