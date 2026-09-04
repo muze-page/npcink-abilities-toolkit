@@ -31,7 +31,7 @@ and final write authorization outside Toolkit.
 | Local WordPress smoke | Pass | Local.app smoke passed on the exact candidate source with default and light profiles (443 and 58 assertions). |
 | Minimum WordPress/PHP smoke | Pass | M4 Docker smoke passed on WordPress 6.9.4 with PHP 8.0 (441 assertions). |
 | Current WordPress/PHP smoke | Pass | M4 Docker smoke passed on WordPress 7.0 with PHP 8.5 (441 assertions). |
-| Cross-repository quality matrix | Pending | Run the central matrix before publication. |
+| Cross-repository quality matrix | Needs validation | Central matrix ran local gates successfully for Toolkit, Core, Adapter, Toolbox, and Cloud Addon; the overall matrix stopped because `npcink-ai-cloud` has a dirty worktree and requires exact-SHA GitHub CI validation. |
 
 ## Non-blocking Warnings
 
