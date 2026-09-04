@@ -44,6 +44,6 @@ header.
 
 Do not tag or publish until the cross-repository quality matrix passes. The
 release payload was built from source commit
-`519cde8c73b6c41f8e1deb667fced47703946fd3` and has SHA-256
-`4fab93615ea877fffcf5c94533a16f32a2f2c6feacc3bf0c50c8c44f2b969af0`.
+`6b81cabe119ecfd923128cdfbf1e67c8fd65e02c` and has SHA-256
+`b95fc1d51303c81ebbf1ccb3fbc2ddd1094230cd6a656f5215fc96c0ca65c63e`.
 Record the final tag and WordPress.org SVN revision here after publication.
