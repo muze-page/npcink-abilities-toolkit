@@ -118,9 +118,10 @@ final class Core_Write_Package {
 	 *
 	 * This is maintenance only; it is not a workflow queue or a write ability.
 	 *
+	 * @param bool $execute Whether to remove files and persist expiry markers. False returns a read-only preview.
 	 * @return array<string,int>
 	 */
-	public function cleanup_expired_media_backups(): array {
+	public function cleanup_expired_media_backups( bool $execute = true ): array {
 		$retention_days = (int) apply_filters( 'npcink_abilities_toolkit_media_backup_retention_days', self::MEDIA_BACKUP_RETENTION_DAYS );
 		$retention_days = max( 1, min( 365, $retention_days ) );
 		$cutoff = time() - ( $retention_days * ( defined( 'DAY_IN_SECONDS' ) ? DAY_IN_SECONDS : 86400 ) );
@@ -169,6 +170,9 @@ final class Core_Write_Package {
 					continue;
 				}
 				$expired++;
+				if ( ! $execute ) {
+					continue;
+				}
 				$path = $this->media_uploads_path_for_relative_file( $relative );
 				$file_existed = '' !== $path && is_file( $path );
 				$file_removed = ! $file_existed;
@@ -193,6 +197,15 @@ final class Core_Write_Package {
 		}
 
 		return array( 'retention_days' => $retention_days, 'expired' => $expired, 'removed' => $removed );
+	}
+
+	/**
+	 * Returns an expiry preview without deleting files or changing history.
+	 *
+	 * @return array<string,int>
+	 */
+	public function preview_expired_media_backups(): array {
+		return $this->cleanup_expired_media_backups( false );
 	}
 
 	/**
