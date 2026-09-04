@@ -209,6 +209,50 @@ final class Core_Write_Package {
 	}
 
 	/**
+	 * Previews or removes expired media backups after host confirmation.
+	 *
+	 * @param mixed $input Ability input.
+	 * @return array<string,mixed>|\WP_Error
+	 */
+	public function cleanup_media_backups( $input ) {
+		$input = is_array( $input ) ? $input : array();
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return new \WP_Error( 'npcink_abilities_toolkit_permission_denied', __( 'You do not have permission to clean up media backups.', 'npcink-abilities-toolkit' ), array( 'status' => 403 ) );
+		}
+
+		$preview = $this->preview_expired_media_backups();
+		$payload = array(
+			'retention_days' => absint( $preview['retention_days'] ?? 30 ),
+			'expired'        => absint( $preview['expired'] ?? 0 ),
+			'removed'        => 0,
+			'preview'        => array(
+				'action'       => 'cleanup_expired_media_backups',
+				'expired'      => absint( $preview['expired'] ?? 0 ),
+				'retention_days' => absint( $preview['retention_days'] ?? 30 ),
+				'current_media_preserved' => true,
+			),
+			'dry_run'        => true,
+		);
+		if ( $this->should_dry_run( $input ) ) {
+			return $this->dry_run_payload( $payload );
+		}
+
+		$allowed = $this->assert_commit_allowed( 'npcink-abilities-toolkit/cleanup-media-backups', $input );
+		if ( is_wp_error( $allowed ) ) {
+			return $allowed;
+		}
+
+		$result = $this->cleanup_expired_media_backups( true );
+		return array_merge( $payload, array(
+			'retention_days' => absint( $result['retention_days'] ?? $payload['retention_days'] ),
+			'expired'        => absint( $result['expired'] ?? 0 ),
+			'removed'        => absint( $result['removed'] ?? 0 ),
+			'dry_run'        => false,
+			'preview'        => array_merge( $payload['preview'], array( 'executed' => true ) ),
+		) );
+	}
+
+	/**
 	 * Returns package ability definitions.
 	 *
 	 * @return array<string,array<string,mixed>>
@@ -1126,8 +1170,29 @@ final class Core_Write_Package {
 					array( 'attachment_id', 'backup_id', 'restored', 'rolled_back', 'original_preserved', 'dry_run' )
 				),
 				'execute_callback' => array( $this, 'restore_media_backup' ),
+			),
+			'npcink-abilities-toolkit/cleanup-media-backups' => array(
+				'label'           => __( 'Clean Up Expired Media Backups', 'npcink-abilities-toolkit' ),
+				'description'     => __( 'Previews or removes expired media-operation backups after host approval; current attachment files are never a cleanup target.', 'npcink-abilities-toolkit' ),
+				'category'        => 'npcink-abilities-toolkit-write',
+				'capability'      => 'manage_options',
+				'required_scopes' => array( 'media.write' ),
+				'channels'        => array( 'agent', 'mcp' ),
+				'meta'            => $this->write_meta(),
+				'input_schema'    => $this->schema( array(), array() ),
+				'output_schema'   => $this->schema(
+					array(
+						'retention_days' => array( 'type' => 'integer' ),
+						'expired'        => array( 'type' => 'integer' ),
+						'removed'        => array( 'type' => 'integer' ),
+						'preview'        => array( 'type' => 'object', 'additionalProperties' => true ),
+						'dry_run'        => array( 'type' => 'boolean' ),
+					),
+					array( 'retention_days', 'expired', 'removed', 'dry_run' )
 				),
-				'npcink-abilities-toolkit/rename-media-file' => array(
+				'execute_callback' => array( $this, 'cleanup_media_backups' ),
+			),
+			'npcink-abilities-toolkit/rename-media-file' => array(
 					'label'           => __( 'Rename Media File', 'npcink-abilities-toolkit' ),
 					'description'     => __( 'Renames one attachment main file within its current uploads directory after host approval, preserving a backup and rollback metadata.', 'npcink-abilities-toolkit' ),
 					'category'        => 'npcink-abilities-toolkit-write',
