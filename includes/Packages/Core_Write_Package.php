@@ -31,6 +31,7 @@ final class Core_Write_Package {
 	private const MAX_SETTING_PATCH_DEPTH = 8;
 	private const MAX_SETTING_PATCH_NODES = 500;
 	private const MEDIA_BACKUP_RETENTION_DAYS = 30;
+	private const MAX_MEDIA_BACKUP_CLEANUP_ATTACHMENTS = 500;
 	private const MEDIA_BACKUP_CLEANUP_HOOK = 'npcink_abilities_toolkit_cleanup_media_backups';
 	private const MEDIA_BACKUP_CLEANUP_AUTOMATIC = 'automatic_after_retention';
 	private const MEDIA_BACKUP_CLEANUP_MANUAL = 'manual_confirmation_required';
@@ -129,7 +130,8 @@ final class Core_Write_Package {
 		$removed = 0;
 		$expired = 0;
 
-		$attachment_ids = array();
+		$processed_attachments = 0;
+		$has_more = false;
 		if ( function_exists( 'get_posts' ) ) {
 			$page = 1;
 			do {
@@ -146,65 +148,69 @@ final class Core_Write_Package {
 						'meta_key'               => '_npcink_ai_media_file_replacement_history',
 					)
 				);
-				$attachment_ids = array_merge( $attachment_ids, is_array( $batch ) ? $batch : array() );
-				$page++;
-			} while ( is_array( $batch ) && count( $batch ) === 500 );
-		}
-
-		foreach ( $attachment_ids as $attachment_id ) {
-			$history = $this->get_media_file_replacement_history( absint( $attachment_id ) );
-			$changed = false;
-			foreach ( $history as &$record ) {
-				if ( ! is_array( $record ) || 'backup_expired' === (string) ( $record['status'] ?? '' ) ) {
-					continue;
+				$batch = is_array( $batch ) ? $batch : array();
+				if ( empty( $batch ) ) {
+					break;
 				}
-				$policy = (string) ( $record['backup_cleanup_policy'] ?? '' );
-				if ( self::MEDIA_BACKUP_CLEANUP_AUTOMATIC !== $policy && self::MEDIA_BACKUP_CLEANUP_MANUAL !== $policy ) {
-					// Legacy and unknown records are manual-only until explicitly confirmed.
-					if ( ! $include_manual ) {
-						continue;
+				foreach ( $batch as $attachment_id ) {
+					if ( $processed_attachments >= self::MAX_MEDIA_BACKUP_CLEANUP_ATTACHMENTS ) {
+						$has_more = true;
+						break 2;
+					}
+					++$processed_attachments;
+					$history = $this->get_media_file_replacement_history( absint( $attachment_id ) );
+					$changed = false;
+					foreach ( $history as &$record ) {
+						if ( ! is_array( $record ) || 'backup_expired' === (string) ( $record['status'] ?? '' ) ) {
+							continue;
+						}
+						$policy = (string) ( $record['backup_cleanup_policy'] ?? '' );
+						if ( self::MEDIA_BACKUP_CLEANUP_AUTOMATIC !== $policy && self::MEDIA_BACKUP_CLEANUP_MANUAL !== $policy && ! $include_manual ) {
+							continue;
+						}
+						if ( self::MEDIA_BACKUP_CLEANUP_MANUAL === $policy && ! $include_manual ) {
+							continue;
+						}
+						$backup = is_array( $record['backup'] ?? null ) ? $record['backup'] : array();
+						$relative = $this->normalize_media_relative_file( (string) ( $backup['relative_file'] ?? '' ) );
+						if ( '' === $relative || 0 !== strpos( $relative, 'npcink-abilities-toolkit-backups/' ) ) {
+							continue;
+						}
+						$created = strtotime( (string) ( $record['replaced_at_gmt'] ?? '' ) );
+						if ( false === $created || $created > $cutoff ) {
+							continue;
+						}
+						++$expired;
+						if ( ! $execute ) {
+							continue;
+						}
+						$path = $this->media_uploads_path_for_relative_file( $relative );
+						$file_existed = '' !== $path && is_file( $path );
+						$file_removed = ! $file_existed;
+						if ( ! $file_removed && function_exists( 'wp_delete_file' ) ) {
+							$file_removed = (bool) wp_delete_file( $path );
+						}
+						if ( ! $file_removed ) {
+							continue;
+						}
+						if ( $file_existed ) {
+							++$removed;
+						}
+						$record['status'] = 'backup_expired';
+						$record['backup']['file_exists'] = false;
+						$record['backup']['expired_at_gmt'] = gmdate( 'c' );
+						$changed = true;
+					}
+					unset( $record );
+					if ( $changed && function_exists( 'update_post_meta' ) ) {
+						update_post_meta( absint( $attachment_id ), '_npcink_ai_media_file_replacement_history', $history );
 					}
 				}
-				if ( self::MEDIA_BACKUP_CLEANUP_MANUAL === $policy && ! $include_manual ) {
-					continue;
-				}
-				$backup = is_array( $record['backup'] ?? null ) ? $record['backup'] : array();
-				$relative = $this->normalize_media_relative_file( (string) ( $backup['relative_file'] ?? '' ) );
-				if ( '' === $relative || 0 !== strpos( $relative, 'npcink-abilities-toolkit-backups/' ) ) {
-					continue;
-				}
-				$created = strtotime( (string) ( $record['replaced_at_gmt'] ?? '' ) );
-				if ( false === $created || $created > $cutoff ) {
-					continue;
-				}
-				$expired++;
-				if ( ! $execute ) {
-					continue;
-				}
-				$path = $this->media_uploads_path_for_relative_file( $relative );
-				$file_existed = '' !== $path && is_file( $path );
-				$file_removed = ! $file_existed;
-				if ( ! $file_removed && function_exists( 'wp_delete_file' ) ) {
-					$file_removed = (bool) wp_delete_file( $path );
-				}
-				if ( ! $file_removed ) {
-					continue;
-				}
-				if ( $file_existed ) {
-					$removed++;
-				}
-				$record['status'] = 'backup_expired';
-				$record['backup']['file_exists'] = false;
-				$record['backup']['expired_at_gmt'] = gmdate( 'c' );
-				$changed = true;
-			}
-			unset( $record );
-			if ( $changed && function_exists( 'update_post_meta' ) ) {
-				update_post_meta( absint( $attachment_id ), '_npcink_ai_media_file_replacement_history', $history );
-			}
+				$page++;
+			} while ( count( $batch ) === 500 );
 		}
 
-		return array( 'retention_days' => $retention_days, 'expired' => $expired, 'removed' => $removed );
+		return array( 'retention_days' => $retention_days, 'expired' => $expired, 'removed' => $removed, 'processed_attachments' => $processed_attachments, 'has_more' => $has_more );
 	}
 
 	/**
