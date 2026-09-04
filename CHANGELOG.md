@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.4 - 2026-09-04
+
+- Added bounded media backup retention cleanup with an explicit manual-confirmation exception for exact-manifest batches.
+- Aligned cleanup scheduling with the enabled package profile and cleared the maintenance cron during uninstall.
+- Hardened internal-link candidates to require semantic body evidence and preserve a visible editor handoff.
+- Added media fingerprint and replacement-lineage evidence to governed media operations.
+
 ## 0.5.3 - 2026-07-10
 
 - Corrected the minimum WordPress version to 6.9, where the Abilities API was
