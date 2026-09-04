@@ -1,6 +1,6 @@
 # 0.5.4 Release Verification
 
-Status: release candidate verification in progress.
+Status: release candidate verification complete; publication is pending.
 
 This note records the 0.5.4 candidate built from the clean `origin/master`
 baseline plus the reviewed internal-link and media lifecycle changes. The
@@ -28,20 +28,22 @@ and final write authorization outside Toolkit.
 | `composer check:boundary` | Pass | Project boundary guard passed. |
 | `composer check:wporg` | Pass | WordPress.org review guard passed. |
 | `composer check:plugin-package` | Pass with warnings | Packaged Plugin Check reported no errors; warnings are recorded below. |
-| Local WordPress smoke | Pending on candidate install | Existing Local.app smoke remains available; rerun against the exact 0.5.4 package before publication. |
-| Minimum WordPress/PHP smoke | Blocked | Docker daemon is unavailable on this device. |
+| Local WordPress smoke | Pass | Local.app smoke passed on the exact candidate source with default and light profiles (443 and 58 assertions). |
+| Minimum WordPress/PHP smoke | Pass | M4 Docker smoke passed on WordPress 6.9.4 with PHP 8.0 (441 assertions). |
+| Current WordPress/PHP smoke | Pass | M4 Docker smoke passed on WordPress 7.0 with PHP 8.5 (441 assertions). |
 | Cross-repository quality matrix | Pending | Run the central matrix before publication. |
 
 ## Non-blocking Warnings
 
 Plugin Check currently reports the existing translation-loading deprecation,
-`meta_key` slow-query notices, direct database no-caching notices for bounded
-row locks, and the `Tested up to` value. The readme now declares WordPress 7.1;
-rerun Plugin Check after packaging to confirm the header warning is cleared.
+`meta_key` slow-query notices, and direct database no-caching notices for
+bounded row locks. The `Tested up to` warning was cleared by the 7.1 readme
+header.
 
 ## Publication Gate
 
-Do not tag or publish until the exact candidate commit has passed the minimum
-runtime smoke, current Local smoke, and cross-repository quality matrix. Record
-the final commit, ZIP SHA-256, and WordPress.org SVN revision here before
-publication.
+Do not tag or publish until the cross-repository quality matrix passes. The
+release payload was built from source commit
+`519cde8c73b6c41f8e1deb667fced47703946fd3` and has SHA-256
+`4fab93615ea877fffcf5c94533a16f32a2f2c6feacc3bf0c50c8c44f2b969af0`.
+Record the final tag and WordPress.org SVN revision here after publication.
