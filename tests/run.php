@@ -6647,6 +6647,7 @@ update_post_meta(
 			'replacement_id'  => 'automatic-retention',
 			'status'          => 'active',
 			'replaced_at_gmt' => gmdate( 'c', time() - ( 31 * 86400 ) ),
+			'backup_cleanup_policy' => 'automatic_after_retention',
 			'backup'          => array( 'relative_file' => $automatic_retention_relative, 'file_exists' => true ),
 		),
 	)
@@ -6655,9 +6656,9 @@ $media_backup_cleanup = $core_write_package->cleanup_expired_media_backups();
 $media_backup_cleanup_history = get_post_meta( 790, '_npcink_ai_media_file_replacement_history', true );
 npcink_abilities_toolkit_assert_true( is_file( $manual_retention_path ), 'expired exact-manifest backup remains available without explicit cleanup confirmation' );
 npcink_abilities_toolkit_assert_same( 'active', $media_backup_cleanup_history[0]['status'] ?? '', 'expired exact-manifest history remains restorable' );
-npcink_abilities_toolkit_assert_true( ! is_file( $automatic_retention_path ), 'legacy backup without a manual policy is removed after retention' );
-npcink_abilities_toolkit_assert_same( 'backup_expired', $media_backup_cleanup_history[1]['status'] ?? '', 'legacy backup history records automatic expiry' );
-npcink_abilities_toolkit_assert_true( (int) ( $media_backup_cleanup['removed'] ?? 0 ) >= 1, 'backup cleanup reports automatically removed legacy files' );
+npcink_abilities_toolkit_assert_true( ! is_file( $automatic_retention_path ), 'explicit automatic policy removes the backup after retention' );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $media_backup_cleanup_history[1]['status'] ?? '', 'automatic backup history records expiry' );
+npcink_abilities_toolkit_assert_true( (int) ( $media_backup_cleanup['removed'] ?? 0 ) >= 1, 'backup cleanup reports automatically removed backups' );
 
 update_post_meta( 79, '_wp_attached_file', '2026/06/workflow-diagram-image.jpg' );
 $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][79]->post_mime_type = 'image/jpeg';
@@ -9351,6 +9352,7 @@ $cleanup_history = array(
 		'replacement_id' => 'cleanup-expired',
 		'replaced_at_gmt' => gmdate( 'c', time() - ( 60 * 86400 ) ),
 		'status' => 'completed',
+		'backup_cleanup_policy' => 'automatic_after_retention',
 		'backup' => array( 'relative_file' => $cleanup_backup_relative, 'file_exists' => true ),
 	),
 	array(
