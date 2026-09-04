@@ -9328,4 +9328,65 @@ npcink_abilities_toolkit_assert_same( $workflow_manifest['cases']['comment_compl
 $workflow_missing = call_user_func( $package_abilities['npcink-abilities-toolkit/get-workflow-recipe']['execute_callback'], array( 'recipe_id' => 'workflow/missing' ) );
 npcink_abilities_toolkit_assert_true( is_wp_error( $workflow_missing ), 'workflow recipe detail ability fails closed for missing recipe' );
 
+// Media backup cleanup is maintenance-only: preview is read-only and
+// execution is restricted to the dedicated backup root.
+$cleanup_uploads = sys_get_temp_dir() . '/npcink-abilities-toolkit-cleanup-' . getmypid();
+$GLOBALS['npcink_abilities_toolkit_unit_upload_basedir'] = $cleanup_uploads;
+wp_mkdir_p( $cleanup_uploads . '/2026/06' );
+wp_mkdir_p( $cleanup_uploads . '/npcink-abilities-toolkit-backups/2026/06' );
+$cleanup_current_relative = '2026/06/cleanup-current.jpg';
+$cleanup_backup_relative = 'npcink-abilities-toolkit-backups/2026/06/cleanup-original.jpg';
+$cleanup_current_path = $cleanup_uploads . '/' . $cleanup_current_relative;
+$cleanup_backup_path = $cleanup_uploads . '/' . $cleanup_backup_relative;
+file_put_contents( $cleanup_current_path, 'current-media-bytes' );
+file_put_contents( $cleanup_backup_path, 'original-media-bytes' );
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][777] = (object) array(
+	'ID' => 777,
+	'post_type' => 'attachment',
+	'post_status' => 'inherit',
+	'post_title' => 'Cleanup fixture',
+);
+$cleanup_history = array(
+	array(
+		'replacement_id' => 'cleanup-expired',
+		'replaced_at_gmt' => gmdate( 'c', time() - ( 60 * 86400 ) ),
+		'status' => 'completed',
+		'backup' => array( 'relative_file' => $cleanup_backup_relative, 'file_exists' => true ),
+	),
+	array(
+		'replacement_id' => 'cleanup-current',
+		'replaced_at_gmt' => gmdate( 'c' ),
+		'status' => 'completed',
+		'backup' => array( 'relative_file' => '2026/06/not-yet-expired.jpg', 'file_exists' => true ),
+	),
+	array(
+		'replacement_id' => 'cleanup-outside-root',
+		'replaced_at_gmt' => gmdate( 'c', time() - ( 60 * 86400 ) ),
+		'status' => 'completed',
+		'backup' => array( 'relative_file' => '2026/06/not-a-backup.jpg', 'file_exists' => true ),
+	),
+);
+update_post_meta( 777, '_npcink_ai_media_file_replacement_history', $cleanup_history );
+update_post_meta( 777, '_wp_attached_file', $cleanup_current_relative );
+// Isolate the maintenance scan from the larger fixture corpus above.
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'] = array( 777 => $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][777] );
+$GLOBALS['npcink_abilities_toolkit_unit_post_meta'] = array( 777 => $GLOBALS['npcink_abilities_toolkit_unit_post_meta'][777] );
+$cleanup_preview = $core_write_package->preview_expired_media_backups();
+npcink_abilities_toolkit_assert_same( 30, $cleanup_preview['retention_days'] ?? 0, 'media backup cleanup uses the default 30-day retention period' );
+npcink_abilities_toolkit_assert_same( 1, $cleanup_preview['expired'] ?? 0, 'media backup cleanup preview finds only the expired dedicated backup' );
+npcink_abilities_toolkit_assert_same( 0, $cleanup_preview['removed'] ?? -1, 'media backup cleanup preview never removes files' );
+npcink_abilities_toolkit_assert_true( is_file( $cleanup_backup_path ), 'media backup cleanup preview leaves the expired backup in place' );
+$cleanup_result = $core_write_package->cleanup_expired_media_backups( true );
+npcink_abilities_toolkit_assert_same( 1, $cleanup_result['expired'] ?? 0, 'media backup cleanup execution processes the expired backup' );
+npcink_abilities_toolkit_assert_same( 1, $cleanup_result['removed'] ?? 0, 'media backup cleanup removes one expired dedicated backup' );
+npcink_abilities_toolkit_assert_true( ! is_file( $cleanup_backup_path ), 'media backup cleanup removes the expired backup file' );
+npcink_abilities_toolkit_assert_true( is_file( $cleanup_current_path ), 'media backup cleanup never removes the current attachment file' );
+$cleanup_history_after = get_post_meta( 777, '_npcink_ai_media_file_replacement_history', true );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $cleanup_history_after[0]['status'] ?? '', 'media backup cleanup retains history and marks the backup expired' );
+npcink_abilities_toolkit_assert_same( 'completed', $cleanup_history_after[1]['status'] ?? '', 'media backup cleanup leaves non-expired history unchanged' );
+npcink_abilities_toolkit_assert_same( 'completed', $cleanup_history_after[2]['status'] ?? '', 'media backup cleanup ignores files outside the dedicated backup root' );
+$cleanup_repeat = $core_write_package->cleanup_expired_media_backups( true );
+npcink_abilities_toolkit_assert_same( 0, $cleanup_repeat['expired'] ?? -1, 'media backup cleanup is idempotent after an expired backup is marked' );
+@unlink( $cleanup_current_path );
+
 echo "OK: {$assertions} assertions\n";
