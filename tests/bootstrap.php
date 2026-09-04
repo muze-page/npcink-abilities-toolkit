@@ -810,6 +810,7 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 	}
 }
 
+
 if ( ! function_exists( 'get_posts' ) ) {
 	function get_posts( $args = array() ) {
 		$args = is_array( $args ) ? $args : array();
@@ -839,6 +840,28 @@ if ( ! function_exists( 'get_posts' ) ) {
 					}
 				)
 			);
+		}
+		if ( isset( $args['meta_key'] ) ) {
+			$meta_key = (string) $args['meta_key'];
+			$posts = array_values(
+				array_filter(
+					$posts,
+					static function ( $post ) use ( $meta_key ) {
+						$post_id = is_object( $post ) ? (int) ( $post->ID ?? 0 ) : 0;
+						return isset( $GLOBALS['npcink_abilities_toolkit_unit_post_meta'][ $post_id ][ $meta_key ] );
+					}
+				)
+			);
+		}
+		$after_id = max( 0, (int) ( $args['npcink_abilities_toolkit_cleanup_after_id'] ?? 0 ) );
+		if ( $after_id > 0 ) {
+			$posts = array_values( array_filter( $posts, static fn( $post ) => is_object( $post ) && (int) ( $post->ID ?? 0 ) > $after_id ) );
+		}
+		if ( 'ID' === (string) ( $args['orderby'] ?? '' ) ) {
+			usort( $posts, static fn( $left, $right ) => (int) ( $left->ID ?? 0 ) <=> (int) ( $right->ID ?? 0 ) );
+			if ( 'DESC' === strtoupper( (string) ( $args['order'] ?? 'ASC' ) ) ) {
+				$posts = array_reverse( $posts );
+			}
 		}
 		$limit = isset( $args['posts_per_page'] ) ? max( 1, (int) $args['posts_per_page'] ) : count( $posts );
 		$page = isset( $args['paged'] ) ? max( 1, (int) $args['paged'] ) : 1;
@@ -1013,6 +1036,13 @@ if ( ! function_exists( 'update_option' ) ) {
 			$GLOBALS['npcink_abilities_toolkit_unit_options'] = array();
 		}
 		$GLOBALS['npcink_abilities_toolkit_unit_options'][ (string) $name ] = $value;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'delete_option' ) ) {
+	function delete_option( $name ) {
+		unset( $GLOBALS['npcink_abilities_toolkit_unit_options'][ (string) $name ] );
 		return true;
 	}
 }

@@ -33,6 +33,11 @@
     "check:plugin-package": "bash scripts/check-plugin-package.sh",
     "test:release-source-guard": "bash tests/release-source-guard.sh",
     "test:smoke-lifecycle": "bash tests/smoke-wp-lifecycle.sh",
+    "test:plugin-package-check": "bash tests/plugin-package-check.sh",
+    "test:cron-profile": [
+      "@php tests/plugin-cron-profile.php default",
+      "@php tests/plugin-cron-profile.php light"
+    ],
     "test:uninstall-cleanup": [
       "@php tests/uninstall-cleanup.php single",
       "@php tests/uninstall-cleanup.php multisite"
@@ -78,6 +83,8 @@
       "@check:wporg",
       "@test:release-source-guard",
       "@test:smoke-lifecycle",
+      "@test:plugin-package-check",
+      "@test:cron-profile",
       "@test:uninstall-cleanup",
       "@perf:bootstrap",
       "@perf:smoke",

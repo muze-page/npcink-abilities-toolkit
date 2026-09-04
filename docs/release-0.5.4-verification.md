@@ -1,6 +1,7 @@
 # 0.5.4 Release Verification
 
-Status: release candidate verification complete; publication is pending.
+Status: release candidate verification rerun complete; final commit and
+cross-repository validation are pending.
 
 This note records the 0.5.4 candidate built from the clean `origin/master`
 baseline plus the reviewed internal-link and media lifecycle changes. The
@@ -9,7 +10,9 @@ and final write authorization outside Toolkit.
 
 ## Changes Verified
 
-- Media backup cleanup is bounded to 500 attachments per run.
+- Media backup cleanup is bounded to 500 attachments per run and advances with
+  a stable attachment-ID cursor rather than accumulating or rescanning the
+  complete history population.
 - Exact-manifest records marked `manual_confirmation_required` are not removed
   by the daily maintenance action.
 - Cleanup scheduling follows the `core_write` package profile and uninstall
@@ -23,8 +26,8 @@ and final write authorization outside Toolkit.
 
 | Check | Status | Evidence |
 | --- | --- | --- |
-| `composer test:all` | Pass | 165 ability contracts, 7 workflow recipes, 6732 assertions, boundary checks, performance checks, and PHP syntax lint passed. |
-| `composer analyse:phpstan` | Pass | No errors on the clean release candidate. |
+| `composer test:all` | Pass | 165 ability contracts, 7 workflow recipes, 6743 assertions, boundary checks, performance checks, profile/Cron behavior checks, packaged Plugin Check behavior checks, and PHP syntax lint passed. |
+| `composer analyse:phpstan` | Pass | No errors on the current candidate source. |
 | `composer check:boundary` | Pass | Project boundary guard passed. |
 | `composer check:wporg` | Pass | WordPress.org review guard passed. |
 | `composer check:plugin-package` | Pass with warnings | Packaged Plugin Check reported no errors; warnings are recorded below. |
@@ -42,8 +45,7 @@ header.
 
 ## Publication Gate
 
-Do not tag or publish until the cross-repository quality matrix passes. The
-release payload was built from source commit
-`6b81cabe119ecfd923128cdfbf1e67c8fd65e02c` and has SHA-256
-`b95fc1d51303c81ebbf1ccb3fbc2ddd1094230cd6a656f5215fc96c0ca65c63e`.
-Record the final tag and WordPress.org SVN revision here after publication.
+Do not tag or publish until these verification fixes are committed, the release
+payload is rebuilt from that exact commit, its SHA-256 is recorded, and the
+cross-repository quality matrix passes. Record the final source commit, payload
+hash, tag, and WordPress.org SVN revision here after publication.

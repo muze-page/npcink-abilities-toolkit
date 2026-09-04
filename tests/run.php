@@ -6723,6 +6723,11 @@ npcink_abilities_toolkit_assert_same( 'active', $media_backup_cleanup_history[0]
 npcink_abilities_toolkit_assert_true( ! is_file( $automatic_retention_path ), 'explicit automatic policy removes the backup after retention' );
 npcink_abilities_toolkit_assert_same( 'backup_expired', $media_backup_cleanup_history[1]['status'] ?? '', 'automatic backup history records expiry' );
 npcink_abilities_toolkit_assert_true( (int) ( $media_backup_cleanup['removed'] ?? 0 ) >= 1, 'backup cleanup reports automatically removed backups' );
+$confirmed_media_backup_cleanup = $core_write_package->cleanup_expired_media_backups( true, true );
+$confirmed_media_backup_cleanup_history = get_post_meta( 790, '_npcink_ai_media_file_replacement_history', true );
+npcink_abilities_toolkit_assert_true( ! is_file( $manual_retention_path ), 'confirmed maintenance cleanup removes an expired exact-manifest backup' );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $confirmed_media_backup_cleanup_history[0]['status'] ?? '', 'confirmed maintenance cleanup records manual backup expiry' );
+npcink_abilities_toolkit_assert_true( (int) ( $confirmed_media_backup_cleanup['removed'] ?? 0 ) >= 1, 'confirmed maintenance cleanup reports manually approved removals' );
 
 update_post_meta( 79, '_wp_attached_file', '2026/06/workflow-diagram-image.jpg' );
 $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][79]->post_mime_type = 'image/jpeg';
@@ -9454,5 +9459,39 @@ npcink_abilities_toolkit_assert_same( 'completed', $cleanup_history_after[2]['st
 $cleanup_repeat = $core_write_package->cleanup_expired_media_backups( true );
 npcink_abilities_toolkit_assert_same( 0, $cleanup_repeat['expired'] ?? -1, 'media backup cleanup is idempotent after an expired backup is marked' );
 @unlink( $cleanup_current_path );
+
+// The persisted ID cursor advances beyond the first 500 attachments instead
+// of rescanning an unchanged meta-key population forever.
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'] = array();
+$GLOBALS['npcink_abilities_toolkit_unit_post_meta'] = array();
+for ( $cleanup_fixture_id = 1000; $cleanup_fixture_id < 1502; ++$cleanup_fixture_id ) {
+	$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][ $cleanup_fixture_id ] = (object) array(
+		'ID'          => $cleanup_fixture_id,
+		'post_type'   => 'attachment',
+		'post_status' => 'inherit',
+	);
+	update_post_meta(
+		$cleanup_fixture_id,
+		'_npcink_ai_media_file_replacement_history',
+		array(
+			array(
+				'replacement_id'  => 'cleanup-' . $cleanup_fixture_id,
+				'replaced_at_gmt' => gmdate( 'c', time() - ( 60 * 86400 ) ),
+				'status'          => 'completed',
+				'backup'          => array( 'relative_file' => 'npcink-abilities-toolkit-backups/2026/06/missing-' . $cleanup_fixture_id . '.jpg', 'file_exists' => true ),
+			),
+		)
+	);
+}
+$bounded_cleanup_first = $core_write_package->cleanup_expired_media_backups( true );
+npcink_abilities_toolkit_assert_same( 500, $bounded_cleanup_first['processed_attachments'] ?? 0, 'media backup cleanup processes at most 500 attachments in one run' );
+npcink_abilities_toolkit_assert_same( true, $bounded_cleanup_first['has_more'] ?? false, 'media backup cleanup reports the look-ahead attachment' );
+npcink_abilities_toolkit_assert_same( 1499, $bounded_cleanup_first['next_cursor'] ?? 0, 'media backup cleanup persists a stable attachment ID cursor' );
+npcink_abilities_toolkit_assert_same( 'completed', $GLOBALS['npcink_abilities_toolkit_unit_post_meta'][1500]['_npcink_ai_media_file_replacement_history'][0]['status'] ?? '', 'the first bounded cleanup run does not process attachment 501' );
+$bounded_cleanup_second = $core_write_package->cleanup_expired_media_backups( true );
+npcink_abilities_toolkit_assert_same( 2, $bounded_cleanup_second['processed_attachments'] ?? 0, 'the next cleanup run resumes after the stable cursor' );
+npcink_abilities_toolkit_assert_same( false, $bounded_cleanup_second['has_more'] ?? true, 'the final cleanup window reports no remaining attachments' );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $GLOBALS['npcink_abilities_toolkit_unit_post_meta'][1501]['_npcink_ai_media_file_replacement_history'][0]['status'] ?? '', 'the stable cursor eventually reaches the final attachment' );
+npcink_abilities_toolkit_assert_same( false, isset( $GLOBALS['npcink_abilities_toolkit_unit_options']['npcink_abilities_toolkit_media_backup_cleanup_cursor'] ), 'the cleanup cursor resets after a complete scan cycle' );
 
 echo "OK: {$assertions} assertions\n";

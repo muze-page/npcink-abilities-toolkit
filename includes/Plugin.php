@@ -151,6 +151,8 @@ final class Plugin {
 		if ( $this->is_package_enabled( 'core_write' ) ) {
 			$this->core_write_package()->boot();
 			$this->schedule_media_backup_cleanup();
+		} else {
+			$this->clear_media_backup_cleanup_schedule();
 		}
 		if ( $this->is_package_enabled( 'core_destructive' ) ) {
 			$this->core_destructive_package()->boot();
@@ -179,6 +181,16 @@ final class Plugin {
 		$hook = 'npcink_abilities_toolkit_cleanup_media_backups';
 		if ( ! wp_next_scheduled( $hook ) ) {
 			wp_schedule_event( time() + ( defined( 'HOUR_IN_SECONDS' ) ? HOUR_IN_SECONDS : 3600 ), 'daily', $hook );
+		}
+	}
+
+	private function clear_media_backup_cleanup_schedule() {
+		if ( ! function_exists( 'wp_next_scheduled' ) || ! function_exists( 'wp_clear_scheduled_hook' ) ) {
+			return;
+		}
+		$hook = 'npcink_abilities_toolkit_cleanup_media_backups';
+		if ( wp_next_scheduled( $hook ) ) {
+			wp_clear_scheduled_hook( $hook );
 		}
 	}
 

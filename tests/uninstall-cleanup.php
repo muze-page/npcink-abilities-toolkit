@@ -79,6 +79,8 @@ require dirname( __DIR__ ) . '/uninstall.php';
 $expected_options = array(
 	'npcink_abilities_toolkit_catalog_observability_state',
 	'npcink_abilities_toolkit_read_cache_version',
+	'npcink_abilities_toolkit_media_backup_cleanup_cursor',
+	'npcink_abilities_toolkit_media_backup_manual_cleanup_cursor',
 );
 $expected_deleted = 'multisite' === $mode ? array_merge( $expected_options, $expected_options ) : $expected_options;
 if ( $expected_deleted !== $GLOBALS['npcink_uninstall_deleted_options'] ) {

@@ -23,6 +23,8 @@ function npcink_abilities_toolkit_uninstall_current_site() {
 	}
 	delete_option( 'npcink_abilities_toolkit_catalog_observability_state' );
 	delete_option( 'npcink_abilities_toolkit_read_cache_version' );
+	delete_option( 'npcink_abilities_toolkit_media_backup_cleanup_cursor' );
+	delete_option( 'npcink_abilities_toolkit_media_backup_manual_cleanup_cursor' );
 }
 
 if ( is_multisite() && function_exists( 'get_sites' ) ) {
