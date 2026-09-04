@@ -119,9 +119,10 @@ final class Core_Write_Package {
 	 * This is maintenance only; it is not a workflow queue or a write ability.
 	 *
 	 * @param bool $execute Whether to remove files and persist expiry markers. False returns a read-only preview.
+	 * @param bool $include_manual Whether a confirmed maintenance run may process manual-confirmation records.
 	 * @return array<string,int>
 	 */
-	public function cleanup_expired_media_backups( bool $execute = true ): array {
+	public function cleanup_expired_media_backups( bool $execute = true, bool $include_manual = false ): array {
 		$retention_days = (int) apply_filters( 'npcink_abilities_toolkit_media_backup_retention_days', self::MEDIA_BACKUP_RETENTION_DAYS );
 		$retention_days = max( 1, min( 365, $retention_days ) );
 		$cutoff = time() - ( $retention_days * ( defined( 'DAY_IN_SECONDS' ) ? DAY_IN_SECONDS : 86400 ) );
@@ -157,7 +158,14 @@ final class Core_Write_Package {
 				if ( ! is_array( $record ) || 'backup_expired' === (string) ( $record['status'] ?? '' ) ) {
 					continue;
 				}
-				if ( self::MEDIA_BACKUP_CLEANUP_MANUAL === (string) ( $record['backup_cleanup_policy'] ?? '' ) ) {
+				$policy = (string) ( $record['backup_cleanup_policy'] ?? '' );
+				if ( self::MEDIA_BACKUP_CLEANUP_AUTOMATIC !== $policy && self::MEDIA_BACKUP_CLEANUP_MANUAL !== $policy ) {
+					// Legacy and unknown records are manual-only until explicitly confirmed.
+					if ( ! $include_manual ) {
+						continue;
+					}
+				}
+				if ( self::MEDIA_BACKUP_CLEANUP_MANUAL === $policy && ! $include_manual ) {
 					continue;
 				}
 				$backup = is_array( $record['backup'] ?? null ) ? $record['backup'] : array();
@@ -205,7 +213,7 @@ final class Core_Write_Package {
 	 * @return array<string,int>
 	 */
 	public function preview_expired_media_backups(): array {
-		return $this->cleanup_expired_media_backups( false );
+		return $this->cleanup_expired_media_backups( false, true );
 	}
 
 	/**
@@ -242,7 +250,7 @@ final class Core_Write_Package {
 			return $allowed;
 		}
 
-		$result = $this->cleanup_expired_media_backups( true );
+		$result = $this->cleanup_expired_media_backups( true, true );
 		return array_merge( $payload, array(
 			'retention_days' => absint( $result['retention_days'] ?? $payload['retention_days'] ),
 			'expired'        => absint( $result['expired'] ?? 0 ),
@@ -4586,9 +4594,7 @@ final class Core_Write_Package {
 					'batch_id'                  => sanitize_text_field( (string) ( $input['batch_id'] ?? '' ) ),
 					'optimization_profile'      => sanitize_text_field( (string) ( $input['optimization_profile'] ?? '' ) ),
 					'batch_confirmation_digest' => $this->normalize_media_sha256( (string) ( $input['batch_confirmation_digest'] ?? '' ) ),
-					'backup_cleanup_policy'     => '' !== sanitize_text_field( (string) ( $input['batch_id'] ?? '' ) )
-						? self::MEDIA_BACKUP_CLEANUP_MANUAL
-						: self::MEDIA_BACKUP_CLEANUP_AUTOMATIC,
+					'backup_cleanup_policy'     => $this->media_backup_cleanup_policy_for_input( $input ),
 				),
 				'_current'       => $current,
 			'_derivative'    => $derivative,
@@ -6596,6 +6602,25 @@ final class Core_Write_Package {
 		if ( ! empty( $facts['watermark_applied'] ) ) { return 'watermark'; }
 		if ( ! empty( $facts['resize_applied'] ) ) { return 'resize'; }
 		return 'encoding';
+	}
+
+	/**
+	 * Freezes the host-selected backup cleanup policy into a replacement record.
+	 * Unknown values fail closed to manual confirmation.
+	 *
+	 * @param array<string,mixed> $input Adoption input.
+	 * @return string
+	 */
+	private function media_backup_cleanup_policy_for_input( array $input ): string {
+		$requested = sanitize_key( (string) ( $input['backup_cleanup_policy'] ?? '' ) );
+		if ( 'automatic' === $requested || self::MEDIA_BACKUP_CLEANUP_AUTOMATIC === $requested ) {
+			$requested = self::MEDIA_BACKUP_CLEANUP_AUTOMATIC;
+		} else {
+			$requested = self::MEDIA_BACKUP_CLEANUP_MANUAL;
+		}
+
+		$policy = apply_filters( 'npcink_abilities_toolkit_media_backup_cleanup_policy', $requested, $input );
+		return self::MEDIA_BACKUP_CLEANUP_AUTOMATIC === $policy ? self::MEDIA_BACKUP_CLEANUP_AUTOMATIC : self::MEDIA_BACKUP_CLEANUP_MANUAL;
 	}
 
 	private function media_visual_reuse_policy_from_facts( array $facts ) {
