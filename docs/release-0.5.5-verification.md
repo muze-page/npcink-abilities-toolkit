@@ -40,7 +40,7 @@ still runs the source gate, PHPStan, LocalWP smoke, and packaged Plugin Check.
 | M4 current WordPress/PHP smoke | Pass | WordPress 7.0 with PHP 8.5 passed 441 assertions. |
 | Cross-repository release acceptance | Pass | Core, Adapter, Toolkit, package installation, signed approved execution, LocalWP smoke, and the exact-revision M4 evidence lane passed in one acceptance run. |
 | Cross-repository quality matrix | Pass | All six repository gates passed. Toolbox also reported three preserved uncommitted browser-smoke test files that require separate ownership before publication. |
-| Release ZIP | Pass | `npcink-abilities-toolkit-0.5.5.zip` contains 88 files; SHA-256 is `5057a9c189c3a9c83000336070803bd8dbd30bfd5943bbecf8a8f28bcb18bc9b`. |
+| Release ZIP | Pass | Two reproducible builds of `npcink-abilities-toolkit-0.5.5.zip` contain 88 files and share SHA-256 `1406a19a61af6ce28d8109ff0e042bc4623a65e4589f9892195dda15d5174f8e`. |
 
 ## Publication Gate
 
