@@ -18,8 +18,13 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
  * @return void
  */
 function npcink_abilities_toolkit_uninstall_current_site() {
+	if ( function_exists( 'wp_clear_scheduled_hook' ) ) {
+		wp_clear_scheduled_hook( 'npcink_abilities_toolkit_cleanup_media_backups' );
+	}
 	delete_option( 'npcink_abilities_toolkit_catalog_observability_state' );
 	delete_option( 'npcink_abilities_toolkit_read_cache_version' );
+	delete_option( 'npcink_abilities_toolkit_media_backup_cleanup_cursor' );
+	delete_option( 'npcink_abilities_toolkit_media_backup_manual_cleanup_cursor' );
 }
 
 if ( is_multisite() && function_exists( 'get_sites' ) ) {

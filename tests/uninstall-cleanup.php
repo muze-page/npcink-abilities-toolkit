@@ -15,6 +15,12 @@ define( 'WP_UNINSTALL_PLUGIN', 'npcink-abilities-toolkit/npcink-abilities-toolki
 $GLOBALS['npcink_uninstall_deleted_options'] = array();
 $GLOBALS['npcink_uninstall_switched_sites'] = array();
 $GLOBALS['npcink_uninstall_restores'] = 0;
+$GLOBALS['npcink_uninstall_cleared_hooks'] = array();
+
+function wp_clear_scheduled_hook( $hook ) {
+	$GLOBALS['npcink_uninstall_cleared_hooks'][] = (string) $hook;
+	return true;
+}
 
 /**
  * Records an option deletion.
@@ -73,10 +79,19 @@ require dirname( __DIR__ ) . '/uninstall.php';
 $expected_options = array(
 	'npcink_abilities_toolkit_catalog_observability_state',
 	'npcink_abilities_toolkit_read_cache_version',
+	'npcink_abilities_toolkit_media_backup_cleanup_cursor',
+	'npcink_abilities_toolkit_media_backup_manual_cleanup_cursor',
 );
 $expected_deleted = 'multisite' === $mode ? array_merge( $expected_options, $expected_options ) : $expected_options;
 if ( $expected_deleted !== $GLOBALS['npcink_uninstall_deleted_options'] ) {
 	fwrite( STDERR, 'Unexpected uninstall deletions: ' . json_encode( $GLOBALS['npcink_uninstall_deleted_options'] ) . "\n" );
+	exit( 1 );
+}
+$expected_cleared_hooks = 'multisite' === $mode
+	? array( 'npcink_abilities_toolkit_cleanup_media_backups', 'npcink_abilities_toolkit_cleanup_media_backups' )
+	: array( 'npcink_abilities_toolkit_cleanup_media_backups' );
+if ( $expected_cleared_hooks !== $GLOBALS['npcink_uninstall_cleared_hooks'] ) {
+	fwrite( STDERR, "Uninstall did not clear the media backup cleanup cron.\n" );
 	exit( 1 );
 }
 if ( 'multisite' === $mode ) {

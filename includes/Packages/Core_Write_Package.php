@@ -31,7 +31,10 @@ final class Core_Write_Package {
 	private const MAX_SETTING_PATCH_DEPTH = 8;
 	private const MAX_SETTING_PATCH_NODES = 500;
 	private const MEDIA_BACKUP_RETENTION_DAYS = 30;
+	private const MAX_MEDIA_BACKUP_CLEANUP_ATTACHMENTS = 500;
 	private const MEDIA_BACKUP_CLEANUP_HOOK = 'npcink_abilities_toolkit_cleanup_media_backups';
+	private const MEDIA_BACKUP_CLEANUP_CURSOR_OPTION = 'npcink_abilities_toolkit_media_backup_cleanup_cursor';
+	private const MEDIA_BACKUP_MANUAL_CLEANUP_CURSOR_OPTION = 'npcink_abilities_toolkit_media_backup_manual_cleanup_cursor';
 	private const MEDIA_BACKUP_CLEANUP_AUTOMATIC = 'automatic_after_retention';
 	private const MEDIA_BACKUP_CLEANUP_MANUAL = 'manual_confirmation_required';
 
@@ -120,7 +123,7 @@ final class Core_Write_Package {
 	 *
 	 * @param bool $execute Whether to remove files and persist expiry markers. False returns a read-only preview.
 	 * @param bool $include_manual Whether a confirmed maintenance run may process manual-confirmation records.
-	 * @return array<string,int>
+	 * @return array<string,int|bool>
 	 */
 	public function cleanup_expired_media_backups( bool $execute = true, bool $include_manual = false ): array {
 		$retention_days = (int) apply_filters( 'npcink_abilities_toolkit_media_backup_retention_days', self::MEDIA_BACKUP_RETENTION_DAYS );
@@ -129,29 +132,18 @@ final class Core_Write_Package {
 		$removed = 0;
 		$expired = 0;
 
-		$attachment_ids = array();
-		if ( function_exists( 'get_posts' ) ) {
-			$page = 1;
-			do {
-				$batch = get_posts(
-					array(
-						'post_type'              => 'attachment',
-						'post_status'            => 'inherit',
-						'posts_per_page'         => 500,
-						'paged'                  => $page,
-						'fields'                 => 'ids',
-						'no_found_rows'          => true,
-						'update_post_meta_cache' => true,
-						'update_post_term_cache' => false,
-						'meta_key'               => '_npcink_ai_media_file_replacement_history',
-					)
-				);
-				$attachment_ids = array_merge( $attachment_ids, is_array( $batch ) ? $batch : array() );
-				$page++;
-			} while ( is_array( $batch ) && count( $batch ) === 500 );
+		$cursor_option = $include_manual ? self::MEDIA_BACKUP_MANUAL_CLEANUP_CURSOR_OPTION : self::MEDIA_BACKUP_CLEANUP_CURSOR_OPTION;
+		$cursor = function_exists( 'get_option' ) ? absint( get_option( $cursor_option, 0 ) ) : 0;
+		$batch = $this->media_backup_cleanup_attachment_ids_after( $cursor );
+		if ( empty( $batch ) && $cursor > 0 ) {
+			$cursor = 0;
+			$batch = $this->media_backup_cleanup_attachment_ids_after( 0 );
 		}
+		$has_more = count( $batch ) > self::MAX_MEDIA_BACKUP_CLEANUP_ATTACHMENTS;
+		$batch = array_slice( $batch, 0, self::MAX_MEDIA_BACKUP_CLEANUP_ATTACHMENTS );
+		$processed_attachments = count( $batch );
 
-		foreach ( $attachment_ids as $attachment_id ) {
+		foreach ( $batch as $attachment_id ) {
 			$history = $this->get_media_file_replacement_history( absint( $attachment_id ) );
 			$changed = false;
 			foreach ( $history as &$record ) {
@@ -159,11 +151,8 @@ final class Core_Write_Package {
 					continue;
 				}
 				$policy = (string) ( $record['backup_cleanup_policy'] ?? '' );
-				if ( self::MEDIA_BACKUP_CLEANUP_AUTOMATIC !== $policy && self::MEDIA_BACKUP_CLEANUP_MANUAL !== $policy ) {
-					// Legacy and unknown records are manual-only until explicitly confirmed.
-					if ( ! $include_manual ) {
-						continue;
-					}
+				if ( '' !== $policy && self::MEDIA_BACKUP_CLEANUP_AUTOMATIC !== $policy && self::MEDIA_BACKUP_CLEANUP_MANUAL !== $policy ) {
+					continue;
 				}
 				if ( self::MEDIA_BACKUP_CLEANUP_MANUAL === $policy && ! $include_manual ) {
 					continue;
@@ -177,7 +166,7 @@ final class Core_Write_Package {
 				if ( false === $created || $created > $cutoff ) {
 					continue;
 				}
-				$expired++;
+				++$expired;
 				if ( ! $execute ) {
 					continue;
 				}
@@ -191,7 +180,7 @@ final class Core_Write_Package {
 					continue;
 				}
 				if ( $file_existed ) {
-					$removed++;
+					++$removed;
 				}
 				$record['status'] = 'backup_expired';
 				$record['backup']['file_exists'] = false;
@@ -204,7 +193,71 @@ final class Core_Write_Package {
 			}
 		}
 
-		return array( 'retention_days' => $retention_days, 'expired' => $expired, 'removed' => $removed );
+		$next_cursor = 0;
+		if ( $execute ) {
+			$next_cursor = $has_more ? absint( end( $batch ) ) : 0;
+			if ( $next_cursor > 0 && function_exists( 'update_option' ) ) {
+				update_option( $cursor_option, $next_cursor, false );
+			} elseif ( function_exists( 'delete_option' ) ) {
+				delete_option( $cursor_option );
+			}
+		}
+
+		return array( 'retention_days' => $retention_days, 'expired' => $expired, 'removed' => $removed, 'processed_attachments' => $processed_attachments, 'has_more' => $has_more, 'next_cursor' => $next_cursor );
+	}
+
+	/**
+	 * Returns one stable ID-ordered cleanup window plus a look-ahead row.
+	 *
+	 * @param int $after_id Last attachment ID processed by an earlier run.
+	 * @return array<int,int>
+	 */
+	private function media_backup_cleanup_attachment_ids_after( int $after_id ): array {
+		if ( ! function_exists( 'get_posts' ) ) {
+			return array();
+		}
+
+		$where_filter = static function ( $where, $query ) use ( $after_id ) {
+			if ( $after_id <= 0 || ! is_object( $query ) || ! method_exists( $query, 'get' ) || absint( $query->get( 'npcink_abilities_toolkit_cleanup_after_id' ) ) !== $after_id ) {
+				return $where;
+			}
+			global $wpdb;
+			if ( ! isset( $wpdb->posts ) ) {
+				return $where;
+			}
+			return $where . $wpdb->prepare( " AND {$wpdb->posts}.ID > %d", $after_id );
+		};
+
+		if ( $after_id > 0 && function_exists( 'add_filter' ) ) {
+			add_filter( 'posts_where', $where_filter, 10, 2 );
+		}
+		try {
+			$attachment_ids = get_posts(
+				array(
+					'post_type'              => 'attachment',
+					'post_status'            => 'inherit',
+					'posts_per_page'         => self::MAX_MEDIA_BACKUP_CLEANUP_ATTACHMENTS + 1,
+					'fields'                 => 'ids',
+					'orderby'                => 'ID',
+					'order'                  => 'ASC',
+					'no_found_rows'          => true,
+					'suppress_filters'       => false,
+					'update_post_meta_cache' => true,
+					'update_post_term_cache' => false,
+					'meta_key'               => '_npcink_ai_media_file_replacement_history',
+					'npcink_abilities_toolkit_cleanup_after_id' => $after_id,
+				)
+			);
+		} finally {
+			if ( $after_id > 0 && function_exists( 'remove_filter' ) ) {
+				remove_filter( 'posts_where', $where_filter, 10 );
+			}
+		}
+
+		$attachment_ids = is_array( $attachment_ids ) ? array_map( 'absint', $attachment_ids ) : array();
+		$attachment_ids = array_values( array_filter( array_unique( $attachment_ids ), static fn( $attachment_id ) => $attachment_id > $after_id ) );
+		sort( $attachment_ids, SORT_NUMERIC );
+		return $attachment_ids;
 	}
 
 	/**
@@ -233,6 +286,8 @@ final class Core_Write_Package {
 			'retention_days' => absint( $preview['retention_days'] ?? 30 ),
 			'expired'        => absint( $preview['expired'] ?? 0 ),
 			'removed'        => 0,
+			'processed_attachments' => absint( $preview['processed_attachments'] ?? 0 ),
+			'has_more'       => ! empty( $preview['has_more'] ),
 			'preview'        => array(
 				'action'       => 'cleanup_expired_media_backups',
 				'expired'      => absint( $preview['expired'] ?? 0 ),
@@ -253,8 +308,10 @@ final class Core_Write_Package {
 		$result = $this->cleanup_expired_media_backups( true, true );
 		return array_merge( $payload, array(
 			'retention_days' => absint( $result['retention_days'] ?? $payload['retention_days'] ),
-			'expired'        => absint( $result['expired'] ?? 0 ),
-			'removed'        => absint( $result['removed'] ?? 0 ),
+				'expired'        => absint( $result['expired'] ?? 0 ),
+				'removed'        => absint( $result['removed'] ?? 0 ),
+				'processed_attachments' => absint( $result['processed_attachments'] ?? 0 ),
+				'has_more'       => ! empty( $result['has_more'] ),
 			'dry_run'        => false,
 			'preview'        => array_merge( $payload['preview'], array( 'executed' => true ) ),
 		) );
@@ -1193,10 +1250,12 @@ final class Core_Write_Package {
 						'retention_days' => array( 'type' => 'integer' ),
 						'expired'        => array( 'type' => 'integer' ),
 						'removed'        => array( 'type' => 'integer' ),
+						'processed_attachments' => array( 'type' => 'integer' ),
+						'has_more'       => array( 'type' => 'boolean' ),
 						'preview'        => array( 'type' => 'object', 'additionalProperties' => true ),
 						'dry_run'        => array( 'type' => 'boolean' ),
 					),
-					array( 'retention_days', 'expired', 'removed', 'dry_run' )
+					array( 'retention_days', 'expired', 'removed', 'processed_attachments', 'has_more', 'dry_run' )
 				),
 				'execute_callback' => array( $this, 'cleanup_media_backups' ),
 			),

@@ -2,9 +2,9 @@
 Contributors: muze233
 Tags: abilities api, agents, ai, automation
 Requires at least: 6.9
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 0.5.3
+Stable tag: 0.5.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -164,6 +164,13 @@ For isolated bounded-chain performance validation, run:
 `composer perf:smoke`
 
 == Changelog ==
+
+= 0.5.4 =
+
+* Added bounded media backup retention cleanup and preserved exact-manifest batch backups until explicit operator confirmation.
+* Aligned cleanup cron registration with the enabled write package and cleared it during uninstall.
+* Required semantic body evidence for internal-link candidates and kept final application in the visible editor.
+* Added canonical media fingerprints and replacement lineage to governed media operations.
 
 = 0.5.3 =
 

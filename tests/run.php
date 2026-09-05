@@ -4173,6 +4173,10 @@ $internal_link_candidates = $core_read_package->resolve_internal_link_targets(
 		'post_type'                 => 'post',
 		'title'                     => 'Workflow optimization guide',
 		'content_text'              => 'Workflow optimization article body that needs related internal reading.',
+		'selected_text'             => 'workflow optimization',
+		'content_blocks'            => array(
+			array( 'client_id' => 'block-workflow', 'block_name' => 'core/paragraph', 'text' => 'This workflow optimization pattern improves internal navigation.' ),
+		),
 		'query'                     => 'workflow',
 		'candidate_limit'           => 4,
 		'max_targets'               => 3,
@@ -4189,17 +4193,77 @@ $internal_link_candidates = $core_read_package->resolve_internal_link_targets(
 				'url'          => 'https://example.test/supplied-workflow',
 				'score'        => 0.82,
 				'evidence_ref' => 'site_knowledge:supplied_workflow',
+				'incoming_count' => 0,
+				'link_graph_issues' => array( 'orphan_post' ),
+				'shared_terms' => array( 'workflow' ),
+				'graph_evidence_available' => true,
 			),
 		),
 	)
 );
 npcink_abilities_toolkit_assert_same( true, $internal_link_candidates['success'] ?? null, 'resolve-internal-link-targets returns a success envelope' );
 npcink_abilities_toolkit_assert_same( 'internal_link_candidates.v1', $internal_link_candidates['data']['internal_link_candidates']['artifact_type'] ?? '', 'resolve-internal-link-targets returns reusable internal-link candidate artifact' );
-npcink_abilities_toolkit_assert_same( 'operator_review_only_no_insert', $internal_link_candidates['data']['internal_link_candidates']['final_write_path'] ?? '', 'resolve-internal-link-targets keeps manual insertion boundary' );
+npcink_abilities_toolkit_assert_same( 'native_editor_commit', $internal_link_candidates['data']['internal_link_candidates']['final_write_path'] ?? '', 'resolve-internal-link-targets permits only a visible editor-state commit' );
 npcink_abilities_toolkit_assert_same( false, $internal_link_candidates['data']['internal_link_candidates']['direct_wordpress_write'] ?? null, 'resolve-internal-link-targets does not perform WordPress writes' );
 npcink_abilities_toolkit_assert_true( (int) ( $internal_link_candidates['data']['summary']['candidate_count'] ?? 0 ) >= 1, 'resolve-internal-link-targets builds bounded candidate rows' );
 npcink_abilities_toolkit_assert_true( in_array( 'supplied_related_content_evidence', array_column( $internal_link_candidates['data']['internal_link_candidates']['items'] ?? array(), 'source' ), true ), 'resolve-internal-link-targets can include host-supplied related content evidence without owning that provider' );
 npcink_abilities_toolkit_assert_true( ! in_array( 77, array_column( $internal_link_candidates['data']['internal_link_candidates']['items'] ?? array(), 'target_post_id' ), true ), 'resolve-internal-link-targets excludes the current post from candidates' );
+$prioritized_internal_link = $internal_link_candidates['data']['internal_link_candidates']['items'][0] ?? array();
+npcink_abilities_toolkit_assert_same( 280976, $prioritized_internal_link['target_post_id'] ?? 0, 'resolve-internal-link-targets gives a bounded priority boost to an orphaned related target' );
+npcink_abilities_toolkit_assert_true( in_array( 'orphan_post', $prioritized_internal_link['link_graph_issues'] ?? array(), true ), 'resolve-internal-link-targets preserves local graph evidence for operator review' );
+npcink_abilities_toolkit_assert_same( array( 'workflow' ), $prioritized_internal_link['shared_terms'] ?? array(), 'resolve-internal-link-targets preserves bounded topic-cluster evidence' );
+$matched_internal_links = array_values( array_filter( $internal_link_candidates['data']['internal_link_candidates']['items'] ?? array(), static fn( $item ) => ! empty( $item['source_match'] ) ) );
+npcink_abilities_toolkit_assert_same( 'block-workflow', $matched_internal_links[0]['source_match']['block_client_id'] ?? '', 'resolve-internal-link-targets locates an exact existing editor phrase' );
+npcink_abilities_toolkit_assert_same( 'workflow optimization', $matched_internal_links[0]['suggested_anchor_text'] ?? '', 'resolve-internal-link-targets uses the exact article phrase as the reviewed anchor' );
+npcink_abilities_toolkit_assert_same( 'supplied_evidence', $matched_internal_links[0]['candidate_source'] ?? '', 'resolve-internal-link-targets labels supplied semantic evidence separately from local fallback' );
+$mixed_anchor_result = $core_read_package->resolve_internal_link_targets(
+	array(
+		'current_post_id' => 77,
+		'content_blocks'  => array(
+			array(
+				'client_id' => 'block-mixed-anchor',
+				'block_name' => 'core/paragraph',
+				'text' => '两小时极速搭建WordPress个人博客 – WordPress教程',
+			),
+		),
+		'related_content_evidence' => array(
+			array(
+				'post_id' => 280977,
+				'title' => '两小时极速搭建WordPress个人博客 – WordPress教程',
+				'url' => 'https://example.test/mixed-anchor',
+			),
+		),
+	)
+);
+$mixed_anchor_item = $mixed_anchor_result['data']['internal_link_candidates']['items'][0] ?? array();
+npcink_abilities_toolkit_assert_same( '两小时极速搭建WordPress个人博客 – WordPress教程', $mixed_anchor_item['suggested_anchor_text'] ?? '', 'resolve-internal-link-targets preserves a complete mixed Chinese/ASCII title anchor' );
+npcink_abilities_toolkit_assert_true( 1 !== preg_match( '/(?:Wo|WordPres)$/', (string) ( $mixed_anchor_item['suggested_anchor_text'] ?? '' ) ), 'resolve-internal-link-targets never ends a title anchor inside an ASCII word' );
+$long_mixed_title = str_repeat( '中', 75 ) . 'WordPress教程';
+$long_mixed_result = $core_read_package->resolve_internal_link_targets(
+	array(
+		'current_post_id' => 77,
+		'content_blocks'  => array( array( 'client_id' => 'block-long-mixed', 'block_name' => 'core/paragraph', 'text' => $long_mixed_title ) ),
+		'related_content_evidence' => array( array( 'post_id' => 280978, 'title' => $long_mixed_title, 'url' => 'https://example.test/long-mixed-anchor' ) ),
+	)
+);
+$long_mixed_anchor = (string) ( $long_mixed_result['data']['internal_link_candidates']['items'][0]['suggested_anchor_text'] ?? '' );
+npcink_abilities_toolkit_assert_true( $long_mixed_anchor !== '' && 1 !== preg_match( '/[A-Za-z0-9]$/', $long_mixed_anchor ), 'resolve-internal-link-targets backs up before an ASCII word when the title limit falls inside that word' );
+$heading_match_result = $core_read_package->resolve_internal_link_targets(
+	array(
+		'current_post_id' => 77,
+		'content_blocks'  => array( array( 'client_id' => 'block-heading', 'block_name' => 'core/heading', 'text' => '功能丰富的主题机制' ) ),
+		'related_content_evidence' => array( array( 'post_id' => 280979, 'title' => '主题机制详解', 'url' => 'https://example.test/heading-match' ) ),
+	)
+);
+npcink_abilities_toolkit_assert_true( empty( $heading_match_result['data']['internal_link_candidates']['items'][0]['source_match'] ?? array() ), 'resolve-internal-link-targets never proposes an automatic match inside a heading block' );
+$generic_phrase_result = $core_read_package->resolve_internal_link_targets(
+	array(
+		'current_post_id' => 77,
+		'content_blocks'  => array( array( 'client_id' => 'block-generic', 'block_name' => 'core/paragraph', 'text' => '本文介绍主题相关配置。' ) ),
+		'related_content_evidence' => array( array( 'post_id' => 280980, 'title' => '主题', 'url' => 'https://example.test/generic-anchor' ) ),
+	)
+);
+npcink_abilities_toolkit_assert_true( empty( $generic_phrase_result['data']['internal_link_candidates']['items'][0]['source_match'] ?? array() ), 'resolve-internal-link-targets rejects an unselected generic two-character anchor' );
 $GLOBALS['npcink_abilities_toolkit_unit_comments'][21] = (object) array(
 	'comment_ID'       => 21,
 	'comment_post_ID'  => 77,
@@ -6659,6 +6723,11 @@ npcink_abilities_toolkit_assert_same( 'active', $media_backup_cleanup_history[0]
 npcink_abilities_toolkit_assert_true( ! is_file( $automatic_retention_path ), 'explicit automatic policy removes the backup after retention' );
 npcink_abilities_toolkit_assert_same( 'backup_expired', $media_backup_cleanup_history[1]['status'] ?? '', 'automatic backup history records expiry' );
 npcink_abilities_toolkit_assert_true( (int) ( $media_backup_cleanup['removed'] ?? 0 ) >= 1, 'backup cleanup reports automatically removed backups' );
+$confirmed_media_backup_cleanup = $core_write_package->cleanup_expired_media_backups( true, true );
+$confirmed_media_backup_cleanup_history = get_post_meta( 790, '_npcink_ai_media_file_replacement_history', true );
+npcink_abilities_toolkit_assert_true( ! is_file( $manual_retention_path ), 'confirmed maintenance cleanup removes an expired exact-manifest backup' );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $confirmed_media_backup_cleanup_history[0]['status'] ?? '', 'confirmed maintenance cleanup records manual backup expiry' );
+npcink_abilities_toolkit_assert_true( (int) ( $confirmed_media_backup_cleanup['removed'] ?? 0 ) >= 1, 'confirmed maintenance cleanup reports manually approved removals' );
 
 update_post_meta( 79, '_wp_attached_file', '2026/06/workflow-diagram-image.jpg' );
 $GLOBALS['npcink_abilities_toolkit_unit_style_posts'][79]->post_mime_type = 'image/jpeg';
@@ -9390,5 +9459,39 @@ npcink_abilities_toolkit_assert_same( 'completed', $cleanup_history_after[2]['st
 $cleanup_repeat = $core_write_package->cleanup_expired_media_backups( true );
 npcink_abilities_toolkit_assert_same( 0, $cleanup_repeat['expired'] ?? -1, 'media backup cleanup is idempotent after an expired backup is marked' );
 @unlink( $cleanup_current_path );
+
+// The persisted ID cursor advances beyond the first 500 attachments instead
+// of rescanning an unchanged meta-key population forever.
+$GLOBALS['npcink_abilities_toolkit_unit_style_posts'] = array();
+$GLOBALS['npcink_abilities_toolkit_unit_post_meta'] = array();
+for ( $cleanup_fixture_id = 1000; $cleanup_fixture_id < 1502; ++$cleanup_fixture_id ) {
+	$GLOBALS['npcink_abilities_toolkit_unit_style_posts'][ $cleanup_fixture_id ] = (object) array(
+		'ID'          => $cleanup_fixture_id,
+		'post_type'   => 'attachment',
+		'post_status' => 'inherit',
+	);
+	update_post_meta(
+		$cleanup_fixture_id,
+		'_npcink_ai_media_file_replacement_history',
+		array(
+			array(
+				'replacement_id'  => 'cleanup-' . $cleanup_fixture_id,
+				'replaced_at_gmt' => gmdate( 'c', time() - ( 60 * 86400 ) ),
+				'status'          => 'completed',
+				'backup'          => array( 'relative_file' => 'npcink-abilities-toolkit-backups/2026/06/missing-' . $cleanup_fixture_id . '.jpg', 'file_exists' => true ),
+			),
+		)
+	);
+}
+$bounded_cleanup_first = $core_write_package->cleanup_expired_media_backups( true );
+npcink_abilities_toolkit_assert_same( 500, $bounded_cleanup_first['processed_attachments'] ?? 0, 'media backup cleanup processes at most 500 attachments in one run' );
+npcink_abilities_toolkit_assert_same( true, $bounded_cleanup_first['has_more'] ?? false, 'media backup cleanup reports the look-ahead attachment' );
+npcink_abilities_toolkit_assert_same( 1499, $bounded_cleanup_first['next_cursor'] ?? 0, 'media backup cleanup persists a stable attachment ID cursor' );
+npcink_abilities_toolkit_assert_same( 'completed', $GLOBALS['npcink_abilities_toolkit_unit_post_meta'][1500]['_npcink_ai_media_file_replacement_history'][0]['status'] ?? '', 'the first bounded cleanup run does not process attachment 501' );
+$bounded_cleanup_second = $core_write_package->cleanup_expired_media_backups( true );
+npcink_abilities_toolkit_assert_same( 2, $bounded_cleanup_second['processed_attachments'] ?? 0, 'the next cleanup run resumes after the stable cursor' );
+npcink_abilities_toolkit_assert_same( false, $bounded_cleanup_second['has_more'] ?? true, 'the final cleanup window reports no remaining attachments' );
+npcink_abilities_toolkit_assert_same( 'backup_expired', $GLOBALS['npcink_abilities_toolkit_unit_post_meta'][1501]['_npcink_ai_media_file_replacement_history'][0]['status'] ?? '', 'the stable cursor eventually reaches the final attachment' );
+npcink_abilities_toolkit_assert_same( false, isset( $GLOBALS['npcink_abilities_toolkit_unit_options']['npcink_abilities_toolkit_media_backup_cleanup_cursor'] ), 'the cleanup cursor resets after a complete scan cycle' );
 
 echo "OK: {$assertions} assertions\n";

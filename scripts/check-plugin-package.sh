@@ -70,9 +70,9 @@ for excluded_path in "${excluded_paths[@]}"; do
 done
 shopt -u nullglob dotglob
 
-wp_args=()
+wp_args=(plugin check "$package_dir" --mode=update --format=strict-json)
 if [[ -n "${WP_PATH:-}" ]]; then
-	wp_args+=(--path="$WP_PATH")
+	wp_args=(--path="$WP_PATH" "${wp_args[@]}")
 fi
 
 php_args=()
@@ -90,9 +90,10 @@ if [[ "$WP_CLI_BIN" != */* ]] && command -v "$WP_CLI_BIN" >/dev/null 2>&1; then
 fi
 
 if [[ "$WP_CLI_BIN" == *.phar ]] || [[ "${#php_args[@]}" -gt 0 ]]; then
-	output="$("$WP_CLI_PHP" "${php_args[@]}" "$wp_cli_command" "${wp_args[@]}" plugin check "$package_dir" --mode=update --format=strict-json)"
+	php_args+=("$wp_cli_command")
+	output="$("$WP_CLI_PHP" "${php_args[@]}" "${wp_args[@]}")"
 else
-	output="$("$wp_cli_command" "${wp_args[@]}" plugin check "$package_dir" --mode=update --format=strict-json)"
+	output="$("$wp_cli_command" "${wp_args[@]}")"
 fi
 
 printf '%s\n' "$output"
