@@ -51,11 +51,15 @@ done < <(sed -e 's/\r$//' "$DISTIGNORE_FILE" | awk 'NF && $1 !~ /^#/')
 rsync_args+=("$ROOT_DIR/" "$package_dir/")
 rsync "${rsync_args[@]}"
 
+# Normalize archive metadata so excluded documentation-only commits do not
+# change the checksum of otherwise identical release contents.
+find "$package_dir" -exec touch -t 200001010000 {} +
+
 zip_path="$ROOT_DIR/dist/$PLUGIN_SLUG-$VERSION.zip"
 rm -f "$zip_path"
 (
 	cd "$tmpdir"
-	zip -qr "$zip_path" "$PLUGIN_SLUG"
+	find "$PLUGIN_SLUG" -print | LC_ALL=C sort | zip -Xq "$zip_path" -@
 )
 
 zip_sha256="$(php -r 'echo hash_file("sha256", $argv[1]);' "$zip_path")"

@@ -4,7 +4,7 @@ Tags: abilities api, agents, ai, automation
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 0.5.4
+Stable tag: 0.5.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -164,6 +164,10 @@ For isolated bounded-chain performance validation, run:
 `composer perf:smoke`
 
 == Changelog ==
+
+= 0.5.5 =
+
+* Isolate the packaged Plugin Check regression test from inherited local WordPress CLI runtime settings.
 
 = 0.5.4 =
 

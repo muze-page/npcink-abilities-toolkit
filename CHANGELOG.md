@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.5 - 2026-09-05
+
+- Isolated the packaged Plugin Check regression test from inherited `WP_CLI_PHP`, error-reporting, and database socket settings so the cross-repository release gate remains deterministic.
+
 ## 0.5.4 - 2026-09-04
 
 - Added bounded media backup retention cleanup with an explicit manual-confirmation exception for exact-manifest batches.

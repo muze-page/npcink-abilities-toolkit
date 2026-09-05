@@ -58,6 +58,7 @@ additional release checks there:
 ```bash
 composer analyse:phpstan
 composer smoke:wp-minimum
+composer smoke:wp-m4
 composer smoke:wp
 composer check:plugin-package
 ```
@@ -66,6 +67,14 @@ composer check:plugin-package
 6.9.4 in a disposable Docker environment. `composer smoke:wp` should target the
 current tested-up-to WordPress line. Both are release gates when the declared
 minimum or official-stack assumptions change.
+
+When Docker runs on the M4 test host instead of the source machine, run
+`composer smoke:wp-m4` from a clean Toolkit checkout. It archives the exact
+current Git revision, runs WordPress 6.9.4/PHP 8.0 and WordPress 7.0/PHP 8.5 on
+M4, cleans the remote workspace, and writes ignored revision-bound evidence to
+`build/m4-wordpress-smoke-evidence.json`. Pass that path through
+`NPCINK_TOOLKIT_WORDPRESS_SMOKE_EVIDENCE` to `composer release:verify`; stale,
+incomplete, or non-M4 evidence fails closed.
 
 Use `composer analyse:phpstan` when public PHP contracts, class boundaries, or
 bootstrap assumptions change, even outside a WordPress.org release. Use
