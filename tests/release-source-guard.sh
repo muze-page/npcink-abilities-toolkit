@@ -37,13 +37,13 @@ if bash "$GUARD" 0.5.3 "$TEST_REPO" >/dev/null 2>&1; then
 	exit 1
 fi
 
-if ! bash "$GUARD" 0.5.4 "$TEST_REPO" >/dev/null; then
+if ! bash "$GUARD" 0.5.5 "$TEST_REPO" >/dev/null; then
 	echo "Release source guard rejected a clean source for a new version." >&2
 	exit 1
 fi
 
 printf 'dirty source\n' >> "$TEST_REPO/source.txt"
-if bash "$GUARD" 0.5.4 "$TEST_REPO" >/dev/null 2>&1; then
+if bash "$GUARD" 0.5.5 "$TEST_REPO" >/dev/null 2>&1; then
 	echo "Release source guard allowed a dirty worktree." >&2
 	exit 1
 fi
