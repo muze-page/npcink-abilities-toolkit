@@ -68,6 +68,21 @@ WP_CLI_MYSQL_SOCKET="/Users/muze/Library/Application Support/Local/run/NPb24Zg9g
 composer release:verify
 ```
 
+When the local Docker daemon is unavailable, generate exact-revision M4
+compatibility evidence first and pass it to the same release gate:
+
+```sh
+composer smoke:wp-m4
+NPCINK_TOOLKIT_WORDPRESS_SMOKE_EVIDENCE="$PWD/build/m4-wordpress-smoke-evidence.json" \
+WP_PATH="/Users/muze/Local Sites/magick-ai/app/public" \
+WP_CLI_MYSQL_SOCKET="/Users/muze/Library/Application Support/Local/run/NPb24Zg9g/mysql/mysqld.sock" \
+composer release:verify
+```
+
+The evidence must name the current Git HEAD and contain passing minimum and
+current WordPress/PHP profiles. It replaces only the duplicate local Docker
+leg; the source, PHPStan, LocalWP, and packaged Plugin Check gates still run.
+
 For the `0.5.0` release line, these checks passed before SVN publishing:
 
 - `composer test:all`

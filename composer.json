@@ -31,9 +31,11 @@
     "check:catalog": "@php scripts/audit-ability-catalog.php tests/fixtures/core-governance-catalog-snapshot.json",
     "check:wporg": "@php scripts/check-wordpress-org-review-rules.php",
     "check:plugin-package": "bash scripts/check-plugin-package.sh",
+    "check:wordpress-smoke-evidence": "@php scripts/check-wordpress-smoke-evidence.php",
     "test:release-source-guard": "bash tests/release-source-guard.sh",
     "test:smoke-lifecycle": "bash tests/smoke-wp-lifecycle.sh",
     "test:plugin-package-check": "bash tests/plugin-package-check.sh",
+    "test:wordpress-smoke-evidence": "@php tests/wordpress-smoke-evidence.php",
     "test:cron-profile": [
       "@php tests/plugin-cron-profile.php default",
       "@php tests/plugin-cron-profile.php light"
@@ -61,6 +63,7 @@
     "smoke:block-theme-host-proof": "bash scripts/block-theme-host-proof.sh",
     "smoke:wp-minimum": "bash scripts/minimum-wordpress-smoke.sh",
     "smoke:wp-current": "MINIMUM_WP_VERSION=7.0 MINIMUM_WP_PHP_VERSION=8.5 MINIMUM_WP_PROJECT_NAME=npcink_abilities_wp70_php85 MINIMUM_WP_HTTP_PORT=8902 WORDPRESS_SMOKE_LABEL=Current bash scripts/minimum-wordpress-smoke.sh",
+    "smoke:wp-m4": "bash scripts/run-m4-wordpress-smoke.sh",
     "e2e:official-stack": "bash scripts/official-stack-e2e.sh",
     "release:verify": "bash scripts/release-verify.sh",
     "release:prepare-wporg": "bash scripts/prepare-wporg-svn-release.sh",
@@ -84,6 +87,7 @@
       "@test:release-source-guard",
       "@test:smoke-lifecycle",
       "@test:plugin-package-check",
+      "@test:wordpress-smoke-evidence",
       "@test:cron-profile",
       "@test:uninstall-cleanup",
       "@perf:bootstrap",

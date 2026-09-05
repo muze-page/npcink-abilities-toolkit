@@ -19,6 +19,10 @@ cd "$ROOT_DIR"
 composer test:all
 composer analyse:phpstan
 git diff --check
-composer smoke:wp-minimum
+if [[ -n "${NPCINK_TOOLKIT_WORDPRESS_SMOKE_EVIDENCE:-}" ]]; then
+	php scripts/check-wordpress-smoke-evidence.php "$NPCINK_TOOLKIT_WORDPRESS_SMOKE_EVIDENCE"
+else
+	composer smoke:wp-minimum
+fi
 composer smoke:wp
 composer check:plugin-package
