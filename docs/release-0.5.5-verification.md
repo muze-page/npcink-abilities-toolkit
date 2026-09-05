@@ -1,7 +1,7 @@
 # 0.5.5 Release Verification
 
-Status: release candidate verified with revision-bound M4 evidence;
-publication operations remain pending.
+Status: release candidate fully verified; publication operations remain
+pending.
 
 This patch candidate keeps the 0.5.4 ability and workflow-definition contracts
 unchanged. It isolates the packaged Plugin Check regression test from WP-CLI
@@ -38,13 +38,14 @@ still runs the source gate, PHPStan, LocalWP smoke, and packaged Plugin Check.
 | Packaged Plugin Check | Pass with warnings | No errors; existing translation-loading and bounded database-query warnings remain. |
 | M4 minimum WordPress/PHP smoke | Pass | WordPress 6.9.4 with PHP 8.0 passed 441 assertions. |
 | M4 current WordPress/PHP smoke | Pass | WordPress 7.0 with PHP 8.5 passed 441 assertions. |
-| Cross-repository release acceptance | Pending final rerun | The previous product gates passed, but the acceptance command must be rerun against the final exact-revision M4 evidence. |
-| Cross-repository quality matrix | Pending final rerun | The previous central matrix passed; rerun it after cross-repository release acceptance on the final candidate. |
+| Cross-repository release acceptance | Pass | Core, Adapter, Toolkit, package installation, signed approved execution, LocalWP smoke, and the exact-revision M4 evidence lane passed in one acceptance run. |
+| Cross-repository quality matrix | Pass | All six repository gates passed. Toolbox also reported three preserved uncommitted browser-smoke test files that require separate ownership before publication. |
+| Release ZIP | Pass | `npcink-abilities-toolkit-0.5.5.zip` contains 88 files; SHA-256 is `5057a9c189c3a9c83000336070803bd8dbd30bfd5943bbecf8a8f28bcb18bc9b`. |
 
 ## Publication Gate
 
-Do not create `0.5.5` or publish the package until the final Toolkit commit has
-fresh exact-revision M4 evidence, the cross-repository release acceptance and
-central quality matrix pass, and the final package SHA-256 is recorded. Push,
-protected merge, tag creation, and WordPress.org publication remain explicit
-release-owner operations.
+The code and compatibility gates are complete. Before creating `0.5.5` or
+publishing the package, resolve ownership of the preserved Toolbox test edits,
+publish the topic branches through protected pull requests, and verify the
+merged release commits still match the reviewed candidates. Tag creation and
+WordPress.org publication remain explicit release-owner operations.
