@@ -51,11 +51,11 @@ docker_version="$(ssh "$M4_HOST" 'docker version --format "{{.Server.Version}}"'
 
 minimum_output="$(ssh "$M4_HOST" "cd '$remote_dir/repo' && MINIMUM_WP_PROJECT_NAME='npcink_toolkit_69_${short_revision}' MINIMUM_WP_HTTP_PORT=8911 bash scripts/minimum-wordpress-smoke.sh" 2>&1)"
 printf '%s\n' "$minimum_output"
-minimum_assertions="$(printf '%s\n' "$minimum_output" | sed -nE 's/^OK: ([0-9]+) assertions$/\1/p' | tail -n 1)"
+minimum_assertions="$(printf '%s\n' "$minimum_output" | sed -nE 's/^Smoke OK: ([0-9]+) assertions$/\1/p' | tail -n 1)"
 
 current_output="$(ssh "$M4_HOST" "cd '$remote_dir/repo' && MINIMUM_WP_VERSION=7.0 MINIMUM_WP_PHP_VERSION=8.5 MINIMUM_WP_PROJECT_NAME='npcink_toolkit_70_${short_revision}' MINIMUM_WP_HTTP_PORT=8912 WORDPRESS_SMOKE_LABEL=Current bash scripts/minimum-wordpress-smoke.sh" 2>&1)"
 printf '%s\n' "$current_output"
-current_assertions="$(printf '%s\n' "$current_output" | sed -nE 's/^OK: ([0-9]+) assertions$/\1/p' | tail -n 1)"
+current_assertions="$(printf '%s\n' "$current_output" | sed -nE 's/^Smoke OK: ([0-9]+) assertions$/\1/p' | tail -n 1)"
 
 if [[ ! "$minimum_assertions" =~ ^[1-9][0-9]*$ || ! "$current_assertions" =~ ^[1-9][0-9]*$ ]]; then
 	echo "M4 smoke output did not contain both assertion totals." >&2

@@ -66,4 +66,9 @@ if ( false === $runner || false === strpos( $runner, 'git ls-files -z' ) || fals
 	exit( 1 );
 }
 
+if ( 2 !== substr_count( $runner, "sed -nE 's/^Smoke OK: ([0-9]+) assertions$/\\1/p'" ) ) {
+	fwrite( STDERR, "FAIL: M4 runner does not parse the WordPress smoke assertion summary.\n" );
+	exit( 1 );
+}
+
 echo "Revision-bound WordPress smoke evidence behavior: ok\n";
