@@ -21,7 +21,8 @@ fi
 source_revision="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 short_revision="${source_revision:0:12}"
 local_tmp="$(mktemp -d "${TMPDIR:-/tmp}/npcink-toolkit-m4.XXXXXX")"
-archive_path="$local_tmp/source.tar"
+archive_path="$local_tmp/test-workspace.tar"
+distribution_archive_path="$local_tmp/distribution.tar"
 remote_dir=''
 
 cleanup() {
@@ -32,8 +33,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-git -C "$ROOT_DIR" archive --format=tar HEAD > "$archive_path"
-archive_sha256="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
+git -C "$ROOT_DIR" archive --format=tar HEAD > "$distribution_archive_path"
+archive_sha256="$(shasum -a 256 "$distribution_archive_path" | awk '{print $1}')"
+(
+	cd "$ROOT_DIR"
+	git ls-files -z | tar --null -T - -cf "$archive_path"
+)
 remote_dir="$(ssh "$M4_HOST" "mkdir -p '$REMOTE_WORKSPACE_ROOT' && mktemp -d '$REMOTE_WORKSPACE_ROOT/npcink-toolkit-release.XXXXXX'")"
 if [[ "$remote_dir" != "$REMOTE_WORKSPACE_ROOT"/npcink-toolkit-release.* ]]; then
 	echo "M4 returned an unexpected workspace path: $remote_dir" >&2

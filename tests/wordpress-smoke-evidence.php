@@ -60,4 +60,10 @@ if ( 0 !== $syntax_status ) {
 	exit( 1 );
 }
 
+$runner = file_get_contents( $root . '/scripts/run-m4-wordpress-smoke.sh' );
+if ( false === $runner || false === strpos( $runner, 'git ls-files -z' ) || false === strpos( $runner, 'distribution.tar' ) ) {
+	fwrite( STDERR, "FAIL: M4 runner does not separate the tracked test workspace from the export-ignored distribution archive.\n" );
+	exit( 1 );
+}
+
 echo "Revision-bound WordPress smoke evidence behavior: ok\n";
